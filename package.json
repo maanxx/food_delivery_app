@@ -1,0 +1,17 @@
+{
+    "name": "fooddeliverymobileapp",
+    "version": "1.0.0",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "start": "concurrently \"npm run start:frontend\" \"npm run start:backend\"",
+        "start:frontend": "cd frontend && npm run web",
+        "start:backend": "cd backend && npm run dev"
+    },
+    "author": "",
+    "license": "ISC",
+    "description": "",
+    "dependencies": {
+        "concurrently": "^9.2.1"
+    }
+}
