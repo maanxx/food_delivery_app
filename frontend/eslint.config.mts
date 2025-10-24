@@ -12,9 +12,10 @@ export default defineConfig([
         languageOptions: { globals: globals.browser },
         rules: {
             "no-unused-vars": "warn",
-            "@typescript-eslint/no-unused-vars": ["warn"],
+            "@typescript-eslint/no-unused-vars": "warn",
             "react/react-in-jsx-scope": "warn",
             "react/jsx-uses-react": "warn",
+            "@typescript-eslint/no-require-imports": "off",
         },
     },
     tseslint.configs.recommended,
