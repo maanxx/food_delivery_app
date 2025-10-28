@@ -1,9 +1,17 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, View, Image } from "react-native";
 import { AppColors } from "../assets/styles/AppColor";
 import AppLogo from "../components/AppLogo";
 
-function SplashScreen() {
+function SplashScreen({ navigation }: any) {
+    useEffect(() => {
+        setTimeout(() => {
+            navigation.navigate("Main");
+        }, 2000);
+
+        return () => {};
+    }, []);
+
     return (
         <View style={styles.container}>
             <Image

@@ -1,4 +1,4 @@
-import CartScreen from "./CartScreen";
+import FavoriteScreen from "./FavoriteScreen";
 import CategoryScreen from "./CategoryScreen";
 import CheckoutScreen from "./CheckoutScreen";
 import DishDetailScreen from "./DishDetailScreen";
@@ -15,7 +15,7 @@ import LoginScreen from "./LoginScreen";
 import ProfileScreen from "./ProfileScreen";
 
 export {
-    CartScreen,
+    FavoriteScreen,
     CategoryScreen,
     CheckoutScreen,
     DishDetailScreen,
