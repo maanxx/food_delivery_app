@@ -1,7 +1,7 @@
 import React from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import AppNavigation from "./AppNavigation";
+import AppNavigation from "../navigation/AppNavigation";
 import { GlobalStyles } from "../assets/styles/GlobalStyles";
 
 export default function App() {
