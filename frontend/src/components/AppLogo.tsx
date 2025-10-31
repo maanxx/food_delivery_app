@@ -5,7 +5,7 @@ type AppLogoProps = {
     fontSize?: number;
     color?: string;
     fontWeight?: "bold" | "normal";
-    fontFamily: string;
+    fontFamily?: string;
 };
 
 function AppLogo(props: AppLogoProps) {
