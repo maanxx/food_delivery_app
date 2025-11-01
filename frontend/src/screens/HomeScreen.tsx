@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -10,242 +10,313 @@ import {
     Image,
     FlatList,
     Pressable,
+    ActivityIndicator,
+    RefreshControl,
 } from "react-native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
-import { Feather, Entypo, AntDesign } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { Feather } from "@expo/vector-icons";
 
 import { AppColors } from "../assets/styles/AppColor";
 import AppLogo from "../components/AppLogo";
 import CartBottomSheet from "../components/CartBottomSheet";
-
-type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, "Home">;
-
-interface FoodItem {
-    id: string;
-    name: string;
-    restaurant: string;
-    rating: number;
-    image?: string;
-    category: string[];
-}
+import FloatingCartButton from "../components/FloatingCartButton";
+import FoodSection from "../components/FoodSection";
+import { useFood } from "../contexts/FoodContext";
+import { useAuth } from "../contexts/AuthContext";
+import { useCart } from "../contexts/CartContext";
+import { FoodWithDetails } from "../types/food";
 
 const HomeScreen = () => {
-    const navigation = useNavigation<HomeScreenNavigationProp>();
-    const [searchQuery, setSearchQuery] = useState<string>("");
+    const router = useRouter();
+    const { user } = useAuth();
+    const {
+        foods,
+        categories,
+        featuredFoods,
+        popularFoods,
+        isLoading,
+        error,
+        loadAllFoods,
+        clearError,
+        refreshAllData,
+    } = useFood();
+
     const [selectedCategory, setSelectedCategory] = useState<string>("All");
     const [showCart, setShowCart] = useState<boolean>(false);
-    // const [cartItems, setCartItems] = useState<CartItem[]>([]);
+    const [refreshing, setRefreshing] = useState<boolean>(false);
 
-    const cartItems = [
-        { id: "1", name: "Burger phô mai", price: 45000, image: "https://i.imgur.com/QnQZ1KZ.png", quantity: 2 },
-        { id: "2", name: "Khoai tây chiên", price: 30000, image: "https://i.imgur.com/VB5U9UI.png", quantity: 1 },
-    ];
-
-    const foodItems: FoodItem[] = [
+    // Demo foods for testing
+    const demoFoods: FoodWithDetails[] = [
         {
-            id: "1",
-            name: "Cheeseburger",
-            rating: 4.9,
-            category: ["Burgers", "Combos"],
-            thumbnail: require("../assets/images/foods/2-mieng-b_-burger-b_-n_ng-whopper_3.jpg"),
-            price: 50000,
-            discount: 60000,
-        },
-        {
-            id: "2",
-            name: "Hamburger",
-            rating: 4.8,
-            category: ["Burgers", "Vegetarian"],
-            thumbnail: require("../assets/images/foods/2-mieng-b_-burger-b_-n_ng-whopper_3.jpg"),
-            price: 50000,
-            discount: 60000,
-        },
-        {
-            id: "3",
-            name: "Hamburger",
-            rating: 4.6,
-            category: ["Burgers", "Chicken"],
-            thumbnail: require("../assets/images/foods/2-mieng-b_-burger-b_-n_ng-whopper_3.jpg"),
-            price: 50000,
-            discount: 60000,
-        },
-        {
-            id: "4",
-            name: "Hamburger",
+            id: "demo-1",
+            name: "Bánh mì thịt nướng",
+            price: 25000,
+            image_url: "https://images.unsplash.com/photo-1558030006-450675393462?w=400&h=300&fit=crop",
+            restaurant_name: "Bánh mì Hồng",
+            description: "Bánh mì thịt nướng thơm ngon, giòn rụm",
+            is_available: true,
+            preparation_time: 15,
             rating: 4.5,
-            category: ["Burgers", "Chicken", "Fried"],
-            thumbnail: require("../assets/images/foods/2-mieng-b_-burger-b_-n_ng-whopper_3.jpg"),
-            price: 50000,
-            discount: 60000,
+            category_id: "1",
+        },
+        {
+            id: "demo-2",
+            name: "Phở bò tái",
+            price: 45000,
+            image_url: "https://images.unsplash.com/photo-1555126634-323283e090fa?w=400&h=300&fit=crop",
+            restaurant_name: "Phở Hà Nội",
+            description: "Phở bò tái đậm đà, nước dùng trong vắt",
+            is_available: true,
+            preparation_time: 20,
+            rating: 4.8,
+            category_id: "2",
+        },
+        {
+            id: "demo-3",
+            name: "Cơm gà xối mỡ",
+            price: 35000,
+            image_url: "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&h=300&fit=crop",
+            restaurant_name: "Cơm gà Hải Nam",
+            description: "Cơm gà xối mỡ truyền thống, thơm lừng",
+            is_available: true,
+            preparation_time: 25,
+            rating: 4.6,
+            category_id: "3",
+        },
+        {
+            id: "demo-4",
+            name: "Pizza Margherita",
+            price: 120000,
+            image_url: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&h=300&fit=crop",
+            restaurant_name: "Pizza House",
+            description: "Pizza Margherita với phô mai mozzarella tươi",
+            is_available: true,
+            preparation_time: 30,
+            rating: 4.7,
+            category_id: "4",
+        },
+        {
+            id: "demo-5",
+            name: "Hamburger bò phô mai",
+            price: 65000,
+            image_url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=400&h=300&fit=crop",
+            restaurant_name: "Burger King",
+            description: "Hamburger bò Angus với phô mai cheddar",
+            is_available: true,
+            preparation_time: 15,
+            rating: 4.4,
+            category_id: "5",
+        },
+        {
+            id: "demo-6",
+            name: "Trà sữa trân châu",
+            price: 30000,
+            image_url: "https://images.unsplash.com/photo-1525385133512-2f3bdd039054?w=400&h=300&fit=crop",
+            restaurant_name: "Gong Cha",
+            description: "Trà sữa trân châu đường đen thơm ngon",
+            is_available: true,
+            preparation_time: 10,
+            rating: 4.3,
+            category_id: "6",
         },
     ];
 
-    const categories = ["All", "Combos", "Ưu đãi đặc biệt", "Burgers", "Classic", "Pizzas", "Mì", "Cơm", "Nước uống"];
+    useEffect(() => {
+        console.log("HomeScreen mounted, loading initial data");
+        if (Array.isArray(categories) && categories.length > 0) {
+            loadAllFoods();
+        }
+    }, []);
 
-    const filteredFoodItems = foodItems.filter((item) => {
-        const matchesSearch =
-            item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.restaurant.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesCategory = selectedCategory === "All" || item.category.includes(selectedCategory);
-        return matchesSearch && matchesCategory;
-    });
+    useEffect(() => {
+        console.log("Food state:", {
+            categoriesLength: Array.isArray(categories) ? categories.length : "not array",
+            foodsLength: Array.isArray(foods) ? foods.length : "not array",
+            featuredFoodsLength: Array.isArray(featuredFoods) ? featuredFoods.length : "not array",
+            popularFoodsLength: Array.isArray(popularFoods) ? popularFoods.length : "not array",
+            isLoading,
+            error,
+        });
+    }, [categories, foods, featuredFoods, popularFoods, isLoading, error]);
 
-    const renderFoodItem = ({ item }: { item: FoodItem }) => (
-        <TouchableOpacity style={styles.foodCard} onPress={() => navigation.navigate("DishDetail")}>
-            <View style={styles.foodImage}>
-                <View style={styles.imagePlaceholder}>
-                    <Image source={item.thumbnail} resizeMode="" style={{ width: "100%", height: "100%" }} />
-                </View>
-            </View>
-            <View style={styles.foodInfo}>
-                <Text style={styles.foodName}>{item.name}</Text>
-                <View
-                    style={{ flexDirection: "row", padding: 1, alignItems: "center", justifyContent: "space-between" }}
-                >
-                    <Text style={styles.foodPrice}>{item.price}đ</Text>
-                    <Text style={styles.foodPriceDiscount}>{item.discount}đ</Text>
-                </View>
-                <View style={styles.ratingContainer}>
-                    <Text style={styles.rating}>★ {item.rating} (672)</Text>
-                    <View
-                        style={{ marginLeft: "auto", padding: 6, borderRadius: 6, backgroundColor: AppColors.primary }}
-                    >
-                        <AntDesign name="plus" size={10} color="white" />
-                    </View>
-                </View>
-            </View>
-        </TouchableOpacity>
-    );
+    const handleFoodPress = (food: FoodWithDetails) => {
+        console.log("Navigate to food detail:", food.name);
+        router.push(`/dish-detail?foodId=${food.id}`);
+    };
 
-    const renderCategory = ({ item }: { item: string }) => (
+    const { addItem } = useCart();
+
+    const handleAddToCart = (food: FoodWithDetails) => {
+        addItem({
+            id: food.id,
+            name: food.name,
+            price: food.price,
+            image_url: food.image_url || "",
+            restaurant_name: food.restaurant_name || "Unknown Restaurant",
+        });
+        console.log("Added to cart:", food.name);
+    };
+
+    const handleCategoryPress = (categoryId: string) => {
+        setSelectedCategory(categoryId);
+        if (categoryId === "All") {
+            loadAllFoods();
+        } else {
+            loadAllFoods({ category_id: categoryId });
+        }
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        try {
+            // Use refreshAllData from context
+            await refreshAllData();
+        } catch (error) {
+            console.error("Refresh error:", error);
+        } finally {
+            setRefreshing(false);
+        }
+    };
+
+    const allCategories = [
+        {
+            id: "All",
+            name: "Tất cả",
+            is_active: true,
+            sort_order: 0,
+            description: "",
+            image_url: "",
+            created_at: "",
+            updated_at: "",
+        },
+        ...(Array.isArray(categories) ? categories : []),
+    ];
+
+    const renderCategory = ({ item }: { item: (typeof allCategories)[0] }) => (
         <TouchableOpacity
-            style={[styles.categoryChip, selectedCategory === item && styles.categoryChipSelected]}
-            onPress={() => setSelectedCategory(item)}
+            style={[styles.categoryChip, selectedCategory === item.id && styles.categoryChipSelected]}
+            onPress={() => handleCategoryPress(item.id)}
         >
-            <Text style={[styles.categoryText, selectedCategory === item && styles.categoryTextSelected]}>{item}</Text>
+            <Text style={[styles.categoryText, selectedCategory === item.id && styles.categoryTextSelected]}>
+                {item.name}
+            </Text>
         </TouchableOpacity>
     );
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.scrollView} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                style={styles.scrollView}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={[AppColors.primary]}
+                        tintColor={AppColors.primary}
+                    />
+                }
+            >
                 {/* Header */}
                 <View style={styles.header}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                         <View style={{ flex: 1 }}>
                             <AppLogo color={"#fff"} fontSize={30} />
-                            <Text style={styles.tagline}>Chào {"Đặng Phúc Nguyên"}!</Text>
+                            <Text style={styles.tagline}>Chào {user?.full_name || "bạn"}!</Text>
                         </View>
 
-                        <Pressable onPress={() => navigation.navigate("Profile")}>
-                            <Image source={require("../assets/images/user-avatar.jpg")} style={styles.avatar} />
+                        <Pressable onPress={() => router.push("/(tabs)/profile")}>
+                            <Image
+                                source={{ uri: "https://via.placeholder.com/50x50/4CAF50/ffffff?text=U" }}
+                                style={styles.avatar}
+                            />
                         </Pressable>
                     </View>
 
                     {/* Search Bar */}
                     <View style={styles.searchContainer}>
-                        <Pressable style={styles.searchButton} onPress={() => navigation.navigate("Search")}>
+                        <Pressable style={styles.searchButton} onPress={() => router.push("/search")}>
                             <Feather name="search" size={24} color="black" />
-                            <Text style={{ color: "#999" }}>Bạn đang thèm gì nào?</Text>
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ color: "#999", textAlign: "center" }}>Bạn đang thèm gì nào?</Text>
+                            </View>
                         </Pressable>
                     </View>
                 </View>
 
                 {/* Categories */}
-                <View style={styles.categoriesContainer} horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.categoriesContainer}>
                     <FlatList
-                        data={categories}
+                        data={allCategories || []}
                         renderItem={renderCategory}
-                        keyExtractor={(item) => item}
+                        keyExtractor={(item) => item.id}
                         horizontal
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={styles.categoriesList}
                     />
                 </View>
 
-                {/* Food Items */}
-                <View>
-                    <Pressable style={styles.foodsTitle}>
-                        <Text style={{ fontWeight: "600" }}>Burgers</Text>
-                        <Entypo name="chevron-right" size={24} color="black" />
-                    </Pressable>
-                    <View style={styles.foodGrid}>
-                        <FlatList
-                            data={filteredFoodItems}
-                            renderItem={renderFoodItem}
-                            keyExtractor={(item) => item.id}
-                            showsVerticalScrollIndicator={false}
-                            horizontal
-                        />
-                    </View>
-                </View>
-                <View>
-                    <Pressable style={styles.foodsTitle}>
-                        <Text style={{ fontWeight: "600" }}>Burgers</Text>
-                        <Entypo name="chevron-right" size={24} color="black" />
-                    </Pressable>
-                    <View style={styles.foodGrid}>
-                        <FlatList
-                            data={filteredFoodItems}
-                            renderItem={renderFoodItem}
-                            keyExtractor={(item) => item.id}
-                            showsVerticalScrollIndicator={false}
-                            horizontal
-                        />
-                    </View>
-                </View>
-                <View>
-                    <Pressable style={styles.foodsTitle}>
-                        <Text style={{ fontWeight: "600" }}>Burgers</Text>
-                        <Entypo name="chevron-right" size={24} color="black" />
-                    </Pressable>
-                    <View style={styles.foodGrid}>
-                        <FlatList
-                            data={filteredFoodItems}
-                            renderItem={renderFoodItem}
-                            keyExtractor={(item) => item.id}
-                            showsVerticalScrollIndicator={false}
-                            horizontal
-                        />
-                    </View>
-                </View>
-            </View>
+                {/* Food Sections */}
+                {/* Demo Foods Section */}
+                <FoodSection
+                    title="🍴 Món ăn demo (Để test giỏ hàng)"
+                    foods={demoFoods}
+                    isLoading={false}
+                    onFoodPress={handleFoodPress}
+                    onAddToCart={handleAddToCart}
+                />
 
-            {/* Cart */}
-            <View style={styles.operationBar}>
-                <TouchableOpacity
-                    onPress={() => setShowCart(true)}
-                    style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        backgroundColor: "#d3d3d3",
-                        borderRadius: 6,
-                        paddingVertical: 8,
-                        paddingHorizontal: 12,
-                    }}
-                >
-                    <Feather name="shopping-cart" size={18} color="#3d3d3d" />
-                    <Text style={{ color: "#3d3d3d", marginLeft: 4, fontWeight: "600" }}>{1}</Text>
-                </TouchableOpacity>
+                <FoodSection
+                    title="Món nổi bật"
+                    foods={Array.isArray(featuredFoods) ? featuredFoods : []}
+                    isLoading={isLoading}
+                    onFoodPress={handleFoodPress}
+                    onAddToCart={handleAddToCart}
+                />
 
-                <TouchableOpacity
-                    onPress={() => navigation.navigate("Checkout")}
-                    style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        backgroundColor: AppColors.primary,
-                        borderRadius: 6,
-                        paddingVertical: 8,
-                        paddingHorizontal: 16,
-                    }}
-                >
-                    <Text style={{ color: "#ffffff" }}>Xem đơn hàng</Text>
-                    <Entypo name="dot-single" size={18} color="white" />
-                    <Text style={{ color: "#ffffff" }}>50.000đ</Text>
-                </TouchableOpacity>
-            </View>
-            <CartBottomSheet visible={showCart} onClose={() => setShowCart(false)} cartItems={cartItems} />
+                <FoodSection
+                    title="Món phổ biến"
+                    foods={Array.isArray(popularFoods) ? popularFoods : []}
+                    isLoading={isLoading}
+                    onFoodPress={handleFoodPress}
+                    onAddToCart={handleAddToCart}
+                />
+
+                {Array.isArray(categories) &&
+                    categories.map((category) => {
+                        const categoryFoods = Array.isArray(foods)
+                            ? foods.filter((food) => food.category_id === category.id)
+                            : [];
+                        if (categoryFoods.length === 0) return null;
+
+                        return (
+                            <FoodSection
+                                key={category.id}
+                                title={category.name}
+                                foods={categoryFoods}
+                                isLoading={isLoading}
+                                onFoodPress={handleFoodPress}
+                                onAddToCart={handleAddToCart}
+                            />
+                        );
+                    })}
+
+                {/* Error Message */}
+                {error && (
+                    <View style={styles.errorContainer}>
+                        <Text style={styles.errorText}>{error}</Text>
+                        <TouchableOpacity onPress={clearError} style={styles.errorButton}>
+                            <Text style={styles.errorButtonText}>Thử lại</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+            </ScrollView>
+
+            {/* Floating Cart Button */}
+            <FloatingCartButton onCartPress={() => setShowCart(true)} showQuickPreview={false} />
+
+            {/* Cart Bottom Sheet */}
+            <CartBottomSheet visible={showCart} onClose={() => setShowCart(false)} />
         </SafeAreaView>
     );
 };
@@ -411,14 +482,30 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginVertical: 7,
     },
-    operationBar: {
-        flexDirection: "row",
-        justifyContent: "space-between",
+
+    errorContainer: {
+        margin: 20,
+        padding: 15,
+        backgroundColor: "#fee",
+        borderRadius: 8,
         alignItems: "center",
-        padding: 12,
-        backgroundColor: "#fff",
-        borderTopWidth: 1,
-        borderTopColor: "#eee",
+    },
+    errorText: {
+        color: "#d32f2f",
+        fontSize: 14,
+        marginBottom: 10,
+        textAlign: "center",
+    },
+    errorButton: {
+        backgroundColor: AppColors.primary,
+        paddingHorizontal: 20,
+        paddingVertical: 8,
+        borderRadius: 6,
+    },
+    errorButtonText: {
+        color: "#fff",
+        fontSize: 14,
+        fontWeight: "500",
     },
 });
 
