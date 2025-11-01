@@ -1,7 +1,5 @@
 import React from "react";
-import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 
 import { HomeScreen, FavoriteScreen, ProfileScreen, OrderHistoryScreen } from "../screens/index";
@@ -23,7 +21,7 @@ function TabNavigator() {
                     height: 60,
                     elevation: 5,
                 },
-                tabBarIcon: ({ focused, color, size }) => {
+                tabBarIcon: ({ focused }) => {
                     let iconName;
                     if (route.name === "Home") iconName = focused ? "home" : "home-outline";
                     else if (route.name === "OrderHistory") iconName = focused ? "time" : "time-outline";
