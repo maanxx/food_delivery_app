@@ -44,7 +44,7 @@ const LoginScreen: React.FC = () => {
                 Alert.alert("Thành công", "Đăng nhập thành công!", [
                     {
                         text: "OK",
-                        onPress: () => router.replace("/(tabs)"),
+                        onPress: () => router.replace("/splash"),
                     },
                 ]);
             } else {

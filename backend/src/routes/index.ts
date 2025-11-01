@@ -1,5 +1,6 @@
 import { Application } from "express";
 import authRoutes from "./auth";
+import foodRoutes from "./food";
 
 const routes = (app: Application) => {
     /* GET */
@@ -9,6 +10,9 @@ const routes = (app: Application) => {
 
     // Auth routes
     app.use("/api/auth", authRoutes);
+
+    // Food routes
+    app.use("/api", foodRoutes);
 
     /* POST */
     /* PUT */

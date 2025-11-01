@@ -1,6 +1,6 @@
 // API Configuration
 export const API_CONFIG = {
-    BASE_URL: "http://192.168.3.3:5678", // need to private
+    BASE_URL: process.env.EXPO_PUBLIC_API_URL || "http://192.168.3.3:5678",
     ENDPOINTS: {
         AUTH: {
             REGISTER: "/api/auth/register",

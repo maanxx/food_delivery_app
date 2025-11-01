@@ -14,8 +14,7 @@ import {
 import { MaterialIcons, AntDesign, Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "../contexts/AuthContext";
-import { Colors } from "../constants/Colors";
-import { Fonts } from "../constants/Fonts";
+import { AppColors } from "../assets/styles/AppColor";
 import { UpdateProfileData, ChangePasswordData } from "../types/auth";
 
 const ProfileScreen = () => {
@@ -159,7 +158,7 @@ const ProfileScreen = () => {
                 {/* Header */}
                 <View style={styles.header}>
                     <View style={styles.avatar}>
-                        <Ionicons name="person" size={40} color={Colors.white} />
+                        <Ionicons name="person" size={40} color="#fff" />
                     </View>
                     <Text style={styles.userName}>{user?.fullName}</Text>
                     <Text style={styles.userEmail}>{user?.email}</Text>
@@ -171,7 +170,7 @@ const ProfileScreen = () => {
                         <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
                         {!isEditing && (
                             <Pressable onPress={() => setIsEditing(true)} style={styles.editButton}>
-                                <AntDesign name="edit" size={18} color={Colors.primary} />
+                                <AntDesign name="edit" size={18} color={AppColors.primary} />
                                 <Text style={styles.editButtonText}>Chỉnh sửa</Text>
                             </Pressable>
                         )}
@@ -235,7 +234,7 @@ const ProfileScreen = () => {
                                 disabled={loading}
                             >
                                 {loading ? (
-                                    <ActivityIndicator size="small" color={Colors.white} />
+                                    <ActivityIndicator size="small" color="#fff" />
                                 ) : (
                                     <Text style={styles.saveButtonText}>Lưu</Text>
                                 )}
@@ -248,7 +247,7 @@ const ProfileScreen = () => {
                         <Text style={styles.sectionTitle}>Đổi mật khẩu</Text>
                         {!isChangingPassword && (
                             <Pressable onPress={() => setIsChangingPassword(true)} style={styles.editButton}>
-                                <MaterialIcons name="lock-outline" size={18} color={Colors.primary} />
+                                <MaterialIcons name="lock-outline" size={18} color={AppColors.primary} />
                                 <Text style={styles.editButtonText}>Đổi mật khẩu</Text>
                             </Pressable>
                         )}
@@ -318,7 +317,7 @@ const ProfileScreen = () => {
                                     disabled={loading}
                                 >
                                     {loading ? (
-                                        <ActivityIndicator size="small" color={Colors.white} />
+                                        <ActivityIndicator size="small" color="#fff" />
                                     ) : (
                                         <Text style={styles.saveButtonText}>Đổi mật khẩu</Text>
                                     )}
@@ -341,13 +340,13 @@ const ProfileScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Colors.white,
+        backgroundColor: "#fff",
     },
     scrollView: {
         flex: 1,
     },
     header: {
-        backgroundColor: Colors.primary,
+        backgroundColor: AppColors.primary,
         paddingVertical: 40,
         alignItems: "center",
         justifyContent: "center",
@@ -356,29 +355,29 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: Colors.primary,
+        backgroundColor: AppColors.primary,
         borderWidth: 3,
-        borderColor: Colors.white,
+        borderColor: "#fff",
         justifyContent: "center",
         alignItems: "center",
         marginBottom: 15,
     },
     userName: {
         fontSize: 24,
-        fontFamily: Fonts.bold,
-        color: Colors.white,
+        fontWeight: "bold",
+        color: "#fff",
         marginBottom: 5,
     },
     userEmail: {
         fontSize: 16,
-        fontFamily: Fonts.regular,
-        color: Colors.white,
+        fontWeight: "normal",
+        color: "#fff",
         opacity: 0.8,
     },
     profileSection: {
         paddingHorizontal: 20,
         paddingVertical: 20,
-        backgroundColor: Colors.white,
+        backgroundColor: "#fff",
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         marginTop: -20,
@@ -393,8 +392,8 @@ const styles = StyleSheet.create({
     },
     sectionTitle: {
         fontSize: 18,
-        fontFamily: Fonts.medium,
-        color: Colors.black,
+        fontWeight: "500",
+        color: "#333",
     },
     editButton: {
         flexDirection: "row",
@@ -403,31 +402,31 @@ const styles = StyleSheet.create({
     editButtonText: {
         marginLeft: 5,
         fontSize: 14,
-        fontFamily: Fonts.medium,
-        color: Colors.primary,
+        fontWeight: "500",
+        color: AppColors.primary,
     },
     fieldContainer: {
         marginBottom: 20,
     },
     fieldLabel: {
         fontSize: 12,
-        color: Colors.gray,
-        fontFamily: Fonts.medium,
+        color: "#666",
+        fontWeight: "500",
         marginBottom: 8,
     },
     inputContainer: {
         borderBottomWidth: 1,
-        borderBottomColor: Colors.lightGray,
+        borderBottomColor: "#E0E0E0",
         paddingVertical: 10,
     },
     fieldValue: {
         fontSize: 16,
-        color: Colors.black,
-        fontFamily: Fonts.regular,
+        color: "#333",
+        fontWeight: "normal",
         flex: 1,
     },
     disabledText: {
-        color: Colors.gray,
+        color: "#666",
     },
     buttonRow: {
         flexDirection: "row",
@@ -443,24 +442,24 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     cancelButton: {
-        backgroundColor: Colors.white,
+        backgroundColor: "#fff",
         borderWidth: 1,
-        borderColor: Colors.gray,
+        borderColor: "#666",
         marginRight: 10,
     },
     cancelButtonText: {
         fontSize: 16,
-        fontFamily: Fonts.medium,
-        color: Colors.gray,
+        fontWeight: "500",
+        color: "#666",
     },
     saveButton: {
-        backgroundColor: Colors.primary,
+        backgroundColor: AppColors.primary,
         marginLeft: 10,
     },
     saveButtonText: {
         fontSize: 16,
-        fontFamily: Fonts.medium,
-        color: Colors.white,
+        fontWeight: "500",
+        color: "#fff",
     },
     logoutButton: {
         flexDirection: "row",
@@ -468,13 +467,13 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         marginTop: 30,
         paddingVertical: 15,
-        backgroundColor: Colors.lightGray,
+        backgroundColor: "#F5F5F5",
         borderRadius: 10,
     },
     logoutButtonText: {
         marginLeft: 10,
         fontSize: 16,
-        fontFamily: Fonts.medium,
+        fontWeight: "500",
         color: "red",
     },
 });
