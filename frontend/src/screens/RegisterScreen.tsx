@@ -25,7 +25,10 @@ interface FormData {
     confirmPassword: string;
 }
 
+import { useNavigation } from "@react-navigation/native";
+
 const RegisterScreen: React.FC = () => {
+    const navigation = useNavigation();
     const { register, isLoading, error, clearError } = useAuth();
     const [formData, setFormData] = useState<FormData>({
         fullName: "",
