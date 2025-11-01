@@ -129,7 +129,7 @@ const HomeScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+            <View style={styles.scrollView} showsVerticalScrollIndicator={false}>
                 {/* Header */}
                 <View style={styles.header}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -153,7 +153,7 @@ const HomeScreen = () => {
                 </View>
 
                 {/* Categories */}
-                <ScrollView style={styles.categoriesContainer} horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.categoriesContainer} horizontal showsHorizontalScrollIndicator={false}>
                     <FlatList
                         data={categories}
                         renderItem={renderCategory}
@@ -162,7 +162,7 @@ const HomeScreen = () => {
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={styles.categoriesList}
                     />
-                </ScrollView>
+                </View>
 
                 {/* Food Items */}
                 <View>
@@ -170,7 +170,7 @@ const HomeScreen = () => {
                         <Text style={{ fontWeight: "600" }}>Burgers</Text>
                         <Entypo name="chevron-right" size={24} color="black" />
                     </Pressable>
-                    <ScrollView style={styles.foodGrid}>
+                    <View style={styles.foodGrid}>
                         <FlatList
                             data={filteredFoodItems}
                             renderItem={renderFoodItem}
@@ -178,14 +178,14 @@ const HomeScreen = () => {
                             showsVerticalScrollIndicator={false}
                             horizontal
                         />
-                    </ScrollView>
+                    </View>
                 </View>
                 <View>
                     <Pressable style={styles.foodsTitle}>
                         <Text style={{ fontWeight: "600" }}>Burgers</Text>
                         <Entypo name="chevron-right" size={24} color="black" />
                     </Pressable>
-                    <ScrollView style={styles.foodGrid}>
+                    <View style={styles.foodGrid}>
                         <FlatList
                             data={filteredFoodItems}
                             renderItem={renderFoodItem}
@@ -193,14 +193,14 @@ const HomeScreen = () => {
                             showsVerticalScrollIndicator={false}
                             horizontal
                         />
-                    </ScrollView>
+                    </View>
                 </View>
                 <View>
                     <Pressable style={styles.foodsTitle}>
                         <Text style={{ fontWeight: "600" }}>Burgers</Text>
                         <Entypo name="chevron-right" size={24} color="black" />
                     </Pressable>
-                    <ScrollView style={styles.foodGrid}>
+                    <View style={styles.foodGrid}>
                         <FlatList
                             data={filteredFoodItems}
                             renderItem={renderFoodItem}
@@ -208,9 +208,9 @@ const HomeScreen = () => {
                             showsVerticalScrollIndicator={false}
                             horizontal
                         />
-                    </ScrollView>
+                    </View>
                 </View>
-            </ScrollView>
+            </View>
 
             {/* Cart */}
             <View style={styles.operationBar}>
