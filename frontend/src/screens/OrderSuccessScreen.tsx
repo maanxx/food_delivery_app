@@ -32,16 +32,13 @@ const OrderSuccessScreen = () => {
     };
 
     useEffect(() => {
-        // Success animation sequence
         Animated.sequence([
-            // Scale in the success icon
             Animated.spring(scaleAnim, {
                 toValue: 1,
                 tension: 100,
                 friction: 8,
                 useNativeDriver: true,
             }),
-            // Fade in content
             Animated.parallel([
                 Animated.timing(fadeAnim, {
                     toValue: 1,
@@ -56,7 +53,6 @@ const OrderSuccessScreen = () => {
             ]),
         ]).start();
 
-        // Confetti animation
         Animated.loop(
             Animated.sequence([
                 Animated.timing(confettiAnim, {
@@ -72,7 +68,6 @@ const OrderSuccessScreen = () => {
             ]),
         ).start();
 
-        // Auto redirect after 10 seconds
         const timer = setTimeout(() => {
             handleGoToOrderHistory();
         }, 10000);

@@ -47,7 +47,6 @@ const OrderHistoryScreen = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [selectedTab, setSelectedTab] = useState<"all" | "active" | "completed">("all");
 
-    // Mock orders data
     const mockOrders: Order[] = [
         {
             id: "1",
