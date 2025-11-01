@@ -150,14 +150,12 @@ const OrderTrackingScreen = () => {
             const statusIndex = orderDetails.orderHistory.findIndex((item) => item.status === orderDetails.status);
             setCurrentStep(statusIndex);
 
-            // Animate progress
             Animated.timing(progressAnim, {
                 toValue: statusIndex / (orderDetails.orderHistory.length - 1),
                 duration: 1000,
                 useNativeDriver: false,
             }).start();
 
-            // Pulse animation for active step
             if (orderDetails.status === "delivering") {
                 const pulse = () => {
                     Animated.sequence([
@@ -180,7 +178,6 @@ const OrderTrackingScreen = () => {
 
     const loadOrderDetails = async () => {
         try {
-            // Simulate API call
             await new Promise((resolve) => setTimeout(resolve, 1000));
             setOrderDetails(mockOrderData);
         } catch (error) {
