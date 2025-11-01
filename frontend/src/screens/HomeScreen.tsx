@@ -258,13 +258,13 @@ const HomeScreen = () => {
 
                 {/* Food Sections */}
                 {/* Demo Foods Section */}
-                <FoodSection
+                {/* <FoodSection
                     title="🍴 Món ăn demo (Để test giỏ hàng)"
                     foods={demoFoods}
                     isLoading={false}
                     onFoodPress={handleFoodPress}
                     onAddToCart={handleAddToCart}
-                />
+                /> */}
 
                 <FoodSection
                     title="Món nổi bật"
