@@ -14,9 +14,12 @@ import SplashScreen from "./SplashScreen";
 import LoginScreen from "./LoginScreen";
 import ProfileScreen from "./ProfileScreen";
 
+import CartScreen from "./CartScreen";
+
 export {
     FavoriteScreen,
     CategoryScreen,
+    CartScreen,
     CheckoutScreen,
     DishDetailScreen,
     HomeScreen,

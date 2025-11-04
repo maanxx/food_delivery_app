@@ -8,6 +8,8 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@types/uuid": "^8.3.4",
+    "bcrypt": "^6.0.0",
     "body-parser": "^2.2.0",
     "compression": "^1.8.1",
     "cookie-parser": "~1.4.4",
@@ -15,11 +17,16 @@
     "debug": "~2.6.9",
     "dotenv": "^17.2.3",
     "express": "~4.16.1",
+    "express-validator": "^7.3.0",
     "helmet": "^8.1.0",
     "http-errors": "~1.6.3",
     "jade": "~1.11.0",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.1",
-    "morgan": "~1.9.1"
+    "morgan": "~1.9.1",
+    "multer": "^2.0.2",
+    "mysql2": "^3.15.3",
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.38.0",
