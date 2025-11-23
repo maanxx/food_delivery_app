@@ -10,7 +10,7 @@ const useMiddlewares = (app: Application) => {
         cors({
             origin:
                 process.env.NODE_ENV === "production"
-                    ? ["http://localhost:3000", "https://your-frontend-domain.com"]
+                    ? ["http://localhost:8081"]
                     : "*",
             credentials: true,
         }),

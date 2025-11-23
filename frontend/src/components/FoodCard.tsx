@@ -1,6 +1,6 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { AntDesign } from "@expo/vector-icons";
+import React from "react";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { AppColors } from "../assets/styles/AppColor";
 import { FoodWithDetails } from "../types/food";
 
@@ -11,6 +11,7 @@ interface FoodCardProps {
 }
 
 const FoodCard: React.FC<FoodCardProps> = ({ item, onPress, onAddToCart }) => {
+
     const formatPrice = (price: number) => {
         return new Intl.NumberFormat("vi-VN").format(price) + "đ";
     };
@@ -21,7 +22,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ item, onPress, onAddToCart }) => {
                 <View style={styles.imagePlaceholder}>
                     {item.image_url ? (
                         <Image
-                            source={{ uri: item.image_url }}
+                            source={{ uri: item?.image_url }}
                             resizeMode="cover"
                             style={styles.image}
                             onError={() => console.log("Failed to load image:", item.image_url)}
@@ -44,9 +45,13 @@ const FoodCard: React.FC<FoodCardProps> = ({ item, onPress, onAddToCart }) => {
                     )}
                 </View>
                 <View style={styles.ratingContainer}>
-                    <Text style={styles.rating}>
-                        ★ {item.rating.toFixed(1)} ({item.total_reviews})
-                    </Text>
+                    {item.rating > 0 ? (
+                        <Text style={styles.rating}>
+                            ★ {item.rating.toFixed(1)} ({item.total_reviews ?? 0})
+                        </Text>
+                    ) : (
+                        <Text style={styles.noRating}>Chưa có đánh giá</Text>
+                    )}
                     <TouchableOpacity style={styles.addButton} onPress={onAddToCart}>
                         <AntDesign name="plus" size={10} color="white" />
                     </TouchableOpacity>
@@ -137,6 +142,11 @@ const styles = StyleSheet.create({
         fontSize: 11,
         color: AppColors.primary,
         fontWeight: "500",
+    },
+    noRating: {
+        fontSize: 11,
+        color: "#999",
+        fontStyle: "italic",
     },
     addButton: {
         padding: 6,

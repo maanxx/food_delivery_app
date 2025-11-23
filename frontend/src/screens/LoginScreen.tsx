@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -10,18 +10,96 @@ import {
     Platform,
     ScrollView,
     Alert,
+    ActivityIndicator, // <-- added
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { AppColors } from "../assets/styles/AppColor";
 import { useAuth } from "../contexts/AuthContext";
 import AppLogo from "../components/AppLogo";
+import * as WebBrowser from "expo-web-browser";
+import * as Google from "expo-auth-session/providers/google";
+import { ResponseType } from "expo-auth-session";
+import AsyncStorage from "@react-native-async-storage/async-storage"; // <-- added
+
+// Ensure redirect handling
+WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen: React.FC = () => {
     const { login, isLoading, error, clearError } = useAuth();
     const [email, setEmail] = useState<string>("");
     const [password, setPassword] = useState<string>("");
     const [showPassword, setShowPassword] = useState<boolean>(false);
+    const [googleLoading, setGoogleLoading] = useState<boolean>(false);
+
+    // Configure Google auth request - REPLACE client IDs with yours
+    const [request, response, promptAsync] = Google.useAuthRequest({
+        expoClientId: "YOUR_EXPO_CLIENT_ID.apps.googleusercontent.com", // expo client id (for dev in expo)
+        iosClientId: "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com",
+        androidClientId: "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com",
+        webClientId: "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com", // for backend token verification
+        responseType: ResponseType.IdToken,
+        scopes: ["profile", "email"],
+    });
+
+    useEffect(() => {
+        // handle response after promptAsync
+        (async () => {
+            if (response?.type === "success") {
+                const idToken = response.authentication?.idToken;
+                if (!idToken) {
+                    setGoogleLoading(false);
+                    Alert.alert("Lỗi", "Không nhận được idToken từ Google.");
+                    return;
+                }
+
+                try {
+                    // Gửi idToken về backend để verify / tạo session
+                    const res = await fetch("https://YOUR_BACKEND_URL/api/auth/google", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ idToken }),
+                    });
+
+                    if (!res.ok) {
+                        const errText = await res.text();
+                        throw new Error(errText || "Server error");
+                    }
+
+                    const data = await res.json();
+                    // Lưu token và user vào AsyncStorage (hoặc gọi context nếu bạn có hàm cập nhật auth)
+                    // Backend nên trả về dạng: { token: '...', user: { id, name, email, ... } }
+                    if (data?.token) {
+                        await AsyncStorage.setItem("authToken", data.token);
+                    }
+                    if (data?.user) {
+                        await AsyncStorage.setItem("user", JSON.stringify(data.user));
+                    }
+
+                    setGoogleLoading(false);
+                    router.replace("/splash")
+                } catch (err: any) {
+                    setGoogleLoading(false);
+                    Alert.alert("Lỗi", err.message || "Đăng nhập thất bại");
+                }
+            } else if (response?.type === "error") {
+                setGoogleLoading(false);
+                Alert.alert("Lỗi", "Google sign-in thất bại");
+            }
+        })();
+    }, [response]);
+
+    const handleGoogleSignIn = async () => {
+        try {
+            setGoogleLoading(true);
+            // promptAsync opens the Google sign-in
+            await promptAsync({ useProxy: true, showInRecents: true });
+            // result handled in useEffect via `response`
+        } catch (err: any) {
+            setGoogleLoading(false);
+            Alert.alert("Lỗi", err.message || "Không thể đăng nhập bằng Google");
+        }
+    };
 
     const handleLogin = async () => {
         // Clear any previous errors
@@ -41,12 +119,7 @@ const LoginScreen: React.FC = () => {
             const success = await login({ email, password });
 
             if (success) {
-                Alert.alert("Thành công", "Đăng nhập thành công!", [
-                    {
-                        text: "OK",
-                        onPress: () => router.replace("/splash"),
-                    },
-                ]);
+                router.replace("/splash")
             } else {
                 Alert.alert("Lỗi", error || "Đăng nhập thất bại. Vui lòng thử lại.");
             }
@@ -156,9 +229,19 @@ const LoginScreen: React.FC = () => {
 
                         {/* Social Login Buttons */}
                         <View style={styles.socialButtonsContainer}>
-                            <TouchableOpacity style={styles.socialButton}>
-                                <Ionicons name="logo-google" size={24} color="#DB4437" />
-                                <Text style={styles.socialButtonText}>Google</Text>
+                            <TouchableOpacity
+                                style={styles.socialButton}
+                                onPress={handleGoogleSignIn}
+                                disabled={googleLoading}
+                            >
+                                {googleLoading ? (
+                                    <ActivityIndicator />
+                                ) : (
+                                    <>
+                                        <Ionicons name="logo-google" size={24} color="#DB4437" />
+                                        <Text style={styles.socialButtonText}>Google</Text>
+                                    </>
+                                )}
                             </TouchableOpacity>
 
                             <TouchableOpacity style={styles.socialButton}>

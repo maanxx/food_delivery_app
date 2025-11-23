@@ -10,8 +10,11 @@ import {
     TextInput,
     Pressable,
     ActivityIndicator,
+    Image,
+    Platform,
 } from "react-native";
 import { MaterialIcons, AntDesign, Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 
 import { useAuth } from "../contexts/AuthContext";
 import { AppColors } from "../assets/styles/AppColor";
@@ -19,15 +22,26 @@ import { UpdateProfileData, ChangePasswordData } from "../types/auth";
 
 const ProfileScreen = () => {
     const { user, logout, updateProfile, changePassword } = useAuth();
+    const [avatarUri, setAvatarUri] = useState<string | null>(
+        (user as any)?.avatar_path || (user as any)?.avatar_url || null,
+    );
+    const [avatarLoading, setAvatarLoading] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [isChangingPassword, setIsChangingPassword] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    // Profile form state
+    // Profile form state (support multiple addresses)
+    const initialAddresses: string[] = Array.isArray((user as any)?.addresses)
+        ? (user as any).addresses
+        : (user as any)?.address
+        ? [(user as any).address]
+        : [];
+
     const [profileForm, setProfileForm] = useState({
         fullName: user?.fullName || "",
         phone: user?.phone || "",
         email: user?.email || "",
+        addresses: initialAddresses,
     });
 
     // Password form state
@@ -36,6 +50,25 @@ const ProfileScreen = () => {
         newPassword: "",
         confirmPassword: "",
     });
+
+    // helpers for addresses
+    const addAddressField = () => {
+        setProfileForm((prev) => ({ ...prev, addresses: [...(prev.addresses || []), ""] }));
+    };
+    const removeAddress = (index: number) => {
+        setProfileForm((prev) => {
+            const arr = [...(prev.addresses || [])];
+            arr.splice(index, 1);
+            return { ...prev, addresses: arr };
+        });
+    };
+    const updateAddress = (index: number, text: string) => {
+        setProfileForm((prev) => {
+            const arr = [...(prev.addresses || [])];
+            arr[index] = text;
+            return { ...prev, addresses: arr };
+        });
+    };
 
     const handleUpdateProfile = async () => {
         if (!profileForm.fullName.trim()) {
@@ -50,9 +83,16 @@ const ProfileScreen = () => {
 
         setLoading(true);
         try {
-            const updateData: UpdateProfileData = {
+            // include addresses (array) and address (first) in update payload
+            const addresses = Array.isArray(profileForm.addresses)
+                ? profileForm.addresses.map((a: string) => (a || "").trim()).filter(Boolean)
+                : [];
+            const updateData: any = {
                 fullName: profileForm.fullName.trim(),
                 phone: profileForm.phone.trim(),
+                addresses: addresses,
+                // keep legacy single-field for backward compatibility
+                address: addresses.length > 0 ? addresses[0] : "",
             };
 
             const result = await updateProfile(updateData);
@@ -135,10 +175,16 @@ const ProfileScreen = () => {
     };
 
     const cancelEdit = () => {
+        const resetAddresses: string[] = Array.isArray((user as any)?.addresses)
+            ? (user as any).addresses
+            : (user as any)?.address
+            ? [(user as any).address]
+            : [];
         setProfileForm({
             fullName: user?.fullName || "",
             phone: user?.phone || "",
             email: user?.email || "",
+            addresses: resetAddresses,
         });
         setIsEditing(false);
     };
@@ -152,14 +198,63 @@ const ProfileScreen = () => {
         setIsChangingPassword(false);
     };
 
+    const handlePickImage = async () => {
+        try {
+            // request permission on platforms that need it
+            if (Platform.OS !== "web") {
+                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (status !== "granted") {
+                    Alert.alert("Quyền truy cập", "Cần quyền truy cập ảnh để thay đổi avatar");
+                    return;
+                }
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.7,
+            });
+
+            if (result.cancelled) return;
+
+            const uri = (result as any).uri;
+            setAvatarUri(uri); // show preview immediately
+
+            // upload / save avatar (backend may accept avatar_path as URL or handle upload separately)
+            setAvatarLoading(true);
+            try {
+                const updateData: any = { avatar_path: uri };
+                const res = await updateProfile(updateData);
+                if (!res?.success) {
+                    Alert.alert("Lỗi", res?.message || "Không lưu được avatar trên server");
+                }
+            } catch (err) {
+                console.error("Upload avatar error:", err);
+                Alert.alert("Lỗi", "Có lỗi khi cập nhật avatar");
+            } finally {
+                setAvatarLoading(false);
+            }
+        } catch (err) {
+            console.error("Image pick error:", err);
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <View style={styles.avatar}>
-                        <Ionicons name="person" size={40} color="#fff" />
-                    </View>
+                    <Pressable onPress={handlePickImage} style={[styles.avatar, { overflow: "hidden" }]}>
+                        {avatarLoading ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                        ) : avatarUri ? (
+                            <Image source={{ uri: avatarUri }} style={{ width: 80, height: 80, borderRadius: 40 }} />
+                        ) : (
+                            <Ionicons name="person" size={40} color="#fff" />
+                        )}
+                    </Pressable>
+
                     <Text style={styles.userName}>{user?.fullName}</Text>
                     <Text style={styles.userEmail}>{user?.email}</Text>
                 </View>
@@ -189,6 +284,65 @@ const ProfileScreen = () => {
                                 />
                             ) : (
                                 <Text style={styles.fieldValue}>{user?.fullName}</Text>
+                            )}
+                        </View>
+                    </View>
+
+                    {/* Addresses Field: support multiple */}
+                    <View style={styles.fieldContainer}>
+                        <Text style={styles.fieldLabel}>ĐỊA CHỈ</Text>
+                        <View style={{ marginTop: 8 }}>
+                            {isEditing ? (
+                                <>
+                                    {(profileForm.addresses || []).map((addr: string, idx: number) => (
+                                        <View
+                                            key={idx}
+                                            style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}
+                                        >
+                                            <TextInput
+                                                style={[
+                                                    styles.fieldValue,
+                                                    {
+                                                        flex: 1,
+                                                        minHeight: 40,
+                                                        borderBottomWidth: 1,
+                                                        borderBottomColor: "#E0E0E0",
+                                                        paddingVertical: 6,
+                                                    },
+                                                ]}
+                                                value={addr}
+                                                onChangeText={(text) => updateAddress(idx, text)}
+                                                placeholder={`Địa chỉ ${idx + 1}`}
+                                                multiline
+                                            />
+                                            <TouchableOpacity
+                                                onPress={() => removeAddress(idx)}
+                                                style={{ marginLeft: 8 }}
+                                            >
+                                                <Text style={{ color: "red" }}>Xóa</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    ))}
+                                    <TouchableOpacity onPress={addAddressField} style={{ marginTop: 6 }}>
+                                        <Text style={{ color: AppColors.primary, fontWeight: "600" }}>
+                                            + Thêm địa chỉ
+                                        </Text>
+                                    </TouchableOpacity>
+                                </>
+                            ) : (
+                                <View style={styles.inputContainer}>
+                                    {Array.isArray((user as any)?.addresses) && (user as any).addresses.length > 0 ? (
+                                        (user as any).addresses.map((a: string, i: number) => (
+                                            <Text key={i} style={styles.fieldValue}>
+                                                {a}
+                                            </Text>
+                                        ))
+                                    ) : (user as any)?.address ? (
+                                        <Text style={styles.fieldValue}>{(user as any).address}</Text>
+                                    ) : (
+                                        <Text style={styles.fieldValue}>Chưa có địa chỉ</Text>
+                                    )}
+                                </View>
                             )}
                         </View>
                     </View>

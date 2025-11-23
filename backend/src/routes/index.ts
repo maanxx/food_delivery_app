@@ -1,6 +1,7 @@
 import { Application } from "express";
 import authRoutes from "./auth";
 import foodRoutes from "./food";
+import reviewRoutes from "./review";
 
 const routes = (app: Application) => {
     /* GET */
@@ -13,6 +14,9 @@ const routes = (app: Application) => {
 
     // Food routes
     app.use("/api", foodRoutes);
+
+    // Review routes
+    app.use("/api", reviewRoutes);
 
     /* POST */
     /* PUT */

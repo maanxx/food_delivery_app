@@ -1,264 +1,60 @@
 import { Request, Response } from "express";
-import { ResponseUtils } from "../utils/response";
-
-// Mock data for now - trong thực tế sẽ lấy từ database
-const mockCategories = [
-    {
-        id: "1",
-        name: "Burgers",
-        description: "Các loại burger ngon",
-        image_url: null,
-        is_active: true,
-        sort_order: 1,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-    {
-        id: "2",
-        name: "Pizza",
-        description: "Pizza Ý thơm ngon",
-        image_url: null,
-        is_active: true,
-        sort_order: 2,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-    {
-        id: "3",
-        name: "Nước uống",
-        description: "Thức uống giải khát",
-        image_url: null,
-        is_active: true,
-        sort_order: 3,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-    {
-        id: "4",
-        name: "Khai vị",
-        description: "Món khai vị ngon miệng",
-        image_url: null,
-        is_active: true,
-        sort_order: 4,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-];
-
-const mockRestaurants = [
-    {
-        id: "1",
-        name: "Burger King",
-        description: "Chuỗi burger nổi tiếng",
-        address: "123 Nguyễn Huệ, Q.1, TP.HCM",
-        phone: "0901234567",
-        email: "contact@burgerking.com",
-        image_url: null,
-        rating: 4.5,
-        total_reviews: 1250,
-        is_active: true,
-        delivery_fee: 15000,
-        min_order: 50000,
-        delivery_time: "20-30 phút",
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-    {
-        id: "2",
-        name: "Pizza Hut",
-        description: "Pizza phong cách Mỹ",
-        address: "456 Lê Lợi, Q.1, TP.HCM",
-        phone: "0907654321",
-        email: "info@pizzahut.com",
-        image_url: null,
-        rating: 4.3,
-        total_reviews: 890,
-        is_active: true,
-        delivery_fee: 20000,
-        min_order: 80000,
-        delivery_time: "25-35 phút",
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-];
-
-const mockFoods = [
-    {
-        id: "1",
-        name: "Whopper Burger",
-        description: "Burger bò nướng với rau xanh tươi",
-        price: 85000,
-        discount_price: 95000,
-        category_id: "1",
-        restaurant_id: "1",
-        image_url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=400&h=300&fit=crop",
-        rating: 4.8,
-        total_reviews: 324,
-        is_available: true,
-        prep_time: 15,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-    {
-        id: "2",
-        name: "Cheeseburger Deluxe",
-        description: "Burger phô mai đặc biệt với thịt bò Angus",
-        price: 95000,
-        discount_price: null,
-        category_id: "1",
-        restaurant_id: "1",
-        image_url: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=400&h=300&fit=crop",
-        rating: 4.6,
-        total_reviews: 256,
-        is_available: true,
-        prep_time: 18,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-    {
-        id: "3",
-        name: "Pizza Margherita",
-        description: "Pizza cổ điển với cà chua, phô mai mozzarella",
-        price: 120000,
-        discount_price: 135000,
-        category_id: "2",
-        restaurant_id: "2",
-        image_url: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&h=300&fit=crop",
-        rating: 4.7,
-        total_reviews: 445,
-        is_available: true,
-        prep_time: 25,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-    {
-        id: "4",
-        name: "Pizza Pepperoni",
-        description: "Pizza với xúc xích pepperoni thơm ngon",
-        price: 145000,
-        discount_price: null,
-        category_id: "2",
-        restaurant_id: "2",
-        image_url: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=300&fit=crop",
-        rating: 4.9,
-        total_reviews: 378,
-        is_available: true,
-        prep_time: 30,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-    {
-        id: "5",
-        name: "Coca Cola",
-        description: "Nước ngọt có ga mát lạnh",
-        price: 25000,
-        discount_price: null,
-        category_id: "3",
-        restaurant_id: "1",
-        image_url: "https://images.unsplash.com/photo-1554866585-cd94860890b7?w=400&h=300&fit=crop",
-        rating: 4.2,
-        total_reviews: 152,
-        is_available: true,
-        prep_time: 2,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-    {
-        id: "6",
-        name: "Khoai tây chiên",
-        description: "Khoai tây chiên giòn rụm",
-        price: 35000,
-        discount_price: 40000,
-        category_id: "4",
-        restaurant_id: "1",
-        image_url: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&h=300&fit=crop",
-        rating: 4.4,
-        total_reviews: 198,
-        is_available: true,
-        prep_time: 8,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-    },
-];
+import ResponseUtils from "../utils/response";
+import { CategoryModel } from "../models/Category";
+import { DishModel } from "../models/Dish";
 
 export class FoodController {
-    // Lấy tất cả categories
+    // Lấy tất cả categories (từ DB)
     static async getCategories(req: Request, res: Response) {
         try {
-            const categories = mockCategories.filter((cat) => cat.is_active);
-
-            return ResponseUtils.success(res, "Lấy danh mục thành công", {
-                categories,
-            });
+            const categories = await CategoryModel.findAll();
+            return ResponseUtils.success(res, "Lấy danh mục thành công", { categories });
         } catch (error) {
             console.error("Get categories error:", error);
             return ResponseUtils.error(res, "Lỗi server", 500);
         }
     }
 
-    // Lấy tất cả restaurants
-    static async getRestaurants(req: Request, res: Response) {
-        try {
-            const { is_active, page = 1, limit = 10 } = req.query;
-
-            let restaurants = mockRestaurants;
-
-            if (is_active !== undefined) {
-                restaurants = restaurants.filter((r) => r.is_active === (is_active === "true"));
-            }
-
-            return ResponseUtils.success(res, "Lấy danh sách nhà hàng thành công", {
-                restaurants,
-            });
-        } catch (error) {
-            console.error("Get restaurants error:", error);
-            return ResponseUtils.error(res, "Lỗi server", 500);
-        }
-    }
-
-    // Lấy tất cả foods với filters
     static async getAllFoods(req: Request, res: Response) {
         try {
-            const { category_id, restaurant_id, search, page = 1, limit = 20 } = req.query;
+            const { limit } = req.query;
 
-            let foods = mockFoods.filter((food) => food.is_available);
+            const limitNum = Math.max(1, parseInt(String(limit), 10) || 0);
 
-            // Filter by category
-            if (category_id && category_id !== "All") {
-                foods = foods.filter((food) => food.category_id === category_id);
-            }
+            let dishes: any[] = await DishModel.list();
 
-            // Filter by restaurant
-            if (restaurant_id) {
-                foods = foods.filter((food) => food.restaurant_id === restaurant_id);
-            }
+            const categories = await CategoryModel.findAll();
+            const catMap = new Map(categories.map((c: any) => [c.category_id, c]));
 
-            // Search by name
-            if (search) {
-                const searchTerm = (search as string).toLowerCase();
-                foods = foods.filter(
-                    (food) =>
-                        food.name.toLowerCase().includes(searchTerm) ||
-                        food.description.toLowerCase().includes(searchTerm),
-                );
-            }
-
-            // Add category and restaurant details
-            const foodsWithDetails = foods.map((food) => ({
-                ...food,
-                category: mockCategories.find((cat) => cat.id === food.category_id),
-                restaurant: mockRestaurants.find((rest) => rest.id === food.restaurant_id),
+            const foodsWithDetails = dishes.map((d: any) => ({
+                id: d.dish_id,
+                name: d.name,
+                description: d.description,
+                price: Number(d.price),
+                discount_price: d.discount_amount ? Number(d.price) - Number(d.discount_amount) : null,
+                category_id: d.category_id,
+                image_url: d.thumbnail_path,
+                rating: d.points ? Number(d.points) : 0,
+                total_reviews: d.rate_quantity ?? 0,
+                is_available: Boolean(d.available),
+                prep_time: d.prep_time ?? null,
+                created_at: d.created_at,
+                updated_at: d.update_at ?? d.updated_at,
+                category: catMap.get(d.category_id) || null,
             }));
+
+            const total = foodsWithDetails.length;
+            const totalPages = Math.ceil(total / limitNum);
+
+            console.log("getAllFoods - foodsWithDetails.length:", total);
 
             return ResponseUtils.success(res, "Lấy danh sách món ăn thành công", {
                 foods: foodsWithDetails,
-                categories: mockCategories,
-                restaurants: mockRestaurants,
+                categories,
                 pagination: {
-                    page: parseInt(page as string),
-                    limit: parseInt(limit as string),
-                    total: foods.length,
-                    totalPages: Math.ceil(foods.length / parseInt(limit as string)),
+                    limit: limitNum,
+                    total,
+                    totalPages,
                 },
             });
         } catch (error) {
@@ -271,16 +67,26 @@ export class FoodController {
     static async getFoodById(req: Request, res: Response) {
         try {
             const { id } = req.params;
+            const food = await DishModel.findById(id);
+            if (!food) return ResponseUtils.error(res, "Không tìm thấy món ăn", 404);
 
-            const food = mockFoods.find((f) => f.id === id);
-            if (!food) {
-                return ResponseUtils.error(res, "Không tìm thấy món ăn", 404);
-            }
+            const category = await CategoryModel.findById(food.category_id);
 
             const foodWithDetails = {
-                ...food,
-                category: mockCategories.find((cat) => cat.id === food.category_id),
-                restaurant: mockRestaurants.find((rest) => rest.id === food.restaurant_id),
+                id: food.dish_id,
+                name: food.name,
+                description: food.description,
+                price: Number(food.price),
+                discount_price: food.discount_amount ? Number(food.price) - Number(food.discount_amount) : null,
+                category_id: food.category_id,
+                image_url: food.thumbnail_path,
+                rating: food.points ? Number(food.points) : 0,
+                total_reviews: food.rate_quantity ?? 0,
+                is_available: Boolean(food.available),
+                prep_time: food.prep_time ?? null,
+                created_at: food.created_at,
+                updated_at: food.update_at ?? food.updated_at,
+                category,
             };
 
             return ResponseUtils.success(res, "Lấy thông tin món ăn thành công", foodWithDetails);
@@ -294,18 +100,30 @@ export class FoodController {
     static async getFeaturedFoods(req: Request, res: Response) {
         try {
             const { limit = 10 } = req.query;
-
-            // Lấy foods có rating cao và có discount
-            const featuredFoods = mockFoods
-                .filter((food) => food.is_available && (food.rating >= 4.5 || food.discount_price))
-                .slice(0, parseInt(limit as string))
-                .map((food) => ({
-                    ...food,
-                    category: mockCategories.find((cat) => cat.id === food.category_id),
-                    restaurant: mockRestaurants.find((rest) => rest.id === food.restaurant_id),
+            // Lấy một lô món (có thể mở rộng truy vấn ở model)
+            const dishes = await DishModel.list(100, 0); // lấy trước 100 để lọc
+            const featured = dishes
+                .filter(
+                    (d: any) =>
+                        Boolean(d.available) && (Number(d.points ?? 0) >= 4.5 || Number(d.discount_amount ?? 0) > 0),
+                )
+                .slice(0, parseInt(String(limit), 10))
+                .map((d: any) => ({
+                    id: d.dish_id,
+                    name: d.name,
+                    description: d.description,
+                    price: Number(d.price),
+                    discount_price: d.discount_amount ? Number(d.price) - Number(d.discount_amount) : null,
+                    category_id: d.category_id,
+                    image_url: d.thumbnail_path,
+                    rating: d.points ? Number(d.points) : 0,
+                    total_reviews: d.rate_quantity ?? 0,
+                    is_available: Boolean(d.available),
+                    category: null,
+                    restaurant: null,
                 }));
 
-            return ResponseUtils.success(res, "Lấy món nổi bật thành công", featuredFoods);
+            return ResponseUtils.success(res, "Lấy món nổi bật thành công", featured);
         } catch (error) {
             console.error("Get featured foods error:", error);
             return ResponseUtils.error(res, "Lỗi server", 500);
@@ -316,19 +134,27 @@ export class FoodController {
     static async getPopularFoods(req: Request, res: Response) {
         try {
             const { limit = 10 } = req.query;
-
-            // Lấy foods có nhiều review nhất
-            const popularFoods = mockFoods
-                .filter((food) => food.is_available)
-                .sort((a, b) => b.total_reviews - a.total_reviews)
-                .slice(0, parseInt(limit as string))
-                .map((food) => ({
-                    ...food,
-                    category: mockCategories.find((cat) => cat.id === food.category_id),
-                    restaurant: mockRestaurants.find((rest) => rest.id === food.restaurant_id),
+            const dishes = await DishModel.list(100, 0);
+            const popular = dishes
+                .filter((d: any) => Boolean(d.available))
+                .sort((a: any, b: any) => (b.rate_quantity ?? 0) - (a.rate_quantity ?? 0))
+                .slice(0, parseInt(String(limit), 10))
+                .map((d: any) => ({
+                    id: d.dish_id,
+                    name: d.name,
+                    description: d.description,
+                    price: Number(d.price),
+                    discount_price: d.discount_amount ? Number(d.price) - Number(d.discount_amount) : null,
+                    category_id: d.category_id,
+                    image_url: d.thumbnail_path,
+                    rating: d.points ? Number(d.points) : 0,
+                    total_reviews: d.rate_quantity ?? 0,
+                    is_available: Boolean(d.available),
+                    category: null,
+                    restaurant: null,
                 }));
 
-            return ResponseUtils.success(res, "Lấy món phổ biến thành công", popularFoods);
+            return ResponseUtils.success(res, "Lấy món phổ biến thành công", popular);
         } catch (error) {
             console.error("Get popular foods error:", error);
             return ResponseUtils.error(res, "Lỗi server", 500);
@@ -340,40 +166,52 @@ export class FoodController {
         try {
             const { search, category_id, min_price, max_price, rating } = req.query;
 
-            if (!search) {
-                return ResponseUtils.error(res, "Vui lòng nhập từ khóa tìm kiếm", 400);
-            }
+            if (!search) return ResponseUtils.error(res, "Vui lòng nhập từ khóa tìm kiếm", 400);
 
-            let foods = mockFoods.filter((food) => food.is_available);
+            // Lấy danh sách món để lọc (có thể tối ưu bằng query SQL trong model)
+            const dishes = await DishModel.list(200, 0);
+            let results = dishes.filter((d: any) => Boolean(d.available));
 
-            // Search by name and description
-            const searchTerm = (search as string).toLowerCase();
-            foods = foods.filter(
-                (food) =>
-                    food.name.toLowerCase().includes(searchTerm) || food.description.toLowerCase().includes(searchTerm),
+            const term = String(search).toLowerCase();
+            results = results.filter(
+                (d: any) =>
+                    String(d.name || "")
+                        .toLowerCase()
+                        .includes(term) ||
+                    String(d.description || "")
+                        .toLowerCase()
+                        .includes(term),
             );
 
-            // Apply filters
             if (category_id) {
-                foods = foods.filter((food) => food.category_id === category_id);
+                results = results.filter((d: any) => d.category_id === String(category_id));
             }
-
             if (min_price) {
-                foods = foods.filter((food) => food.price >= parseInt(min_price as string));
+                results = results.filter((d: any) => Number(d.price) >= Number(min_price));
             }
-
             if (max_price) {
-                foods = foods.filter((food) => food.price <= parseInt(max_price as string));
+                results = results.filter((d: any) => Number(d.price) <= Number(max_price));
             }
-
             if (rating) {
-                foods = foods.filter((food) => food.rating >= parseFloat(rating as string));
+                results = results.filter((d: any) => Number(d.points ?? 0) >= Number(rating));
             }
 
-            const foodsWithDetails = foods.map((food) => ({
-                ...food,
-                category: mockCategories.find((cat) => cat.id === food.category_id),
-                restaurant: mockRestaurants.find((rest) => rest.id === food.restaurant_id),
+            const categories = await CategoryModel.findAll();
+            const catMap = new Map(categories.map((c: any) => [c.category_id, c]));
+
+            const foodsWithDetails = results.map((d: any) => ({
+                id: d.dish_id,
+                name: d.name,
+                description: d.description,
+                price: Number(d.price),
+                discount_price: d.discount_amount ? Number(d.price) - Number(d.discount_amount) : null,
+                category_id: d.category_id,
+                image_url: d.thumbnail_path,
+                rating: d.points ? Number(d.points) : 0,
+                total_reviews: d.rate_quantity ?? 0,
+                is_available: Boolean(d.available),
+                category: catMap.get(d.category_id) || null,
+                restaurant: null,
             }));
 
             return ResponseUtils.success(res, "Tìm kiếm thành công", foodsWithDetails);
@@ -386,21 +224,36 @@ export class FoodController {
     // Lấy foods theo category
     static async getFoodsByCategory(req: Request, res: Response) {
         try {
+            // Debug: show params for this route
+            try {
+                console.log("getFoodsByCategory called - params:", req.params);
+            } catch (e) {
+                console.error("Error logging getFoodsByCategory params", e);
+            }
             const { categoryId } = req.params;
             const { page = 1, limit = 20 } = req.query;
 
-            const category = mockCategories.find((cat) => cat.id === categoryId);
-            if (!category) {
-                return ResponseUtils.error(res, "Không tìm thấy danh mục", 404);
-            }
+            const cat = await CategoryModel.findById(categoryId);
+            if (!cat) return ResponseUtils.error(res, "Không tìm thấy danh mục", 404);
 
-            const foods = mockFoods
-                .filter((food) => food.is_available && food.category_id === categoryId)
-                .map((food) => ({
-                    ...food,
-                    category: mockCategories.find((cat) => cat.id === food.category_id),
-                    restaurant: mockRestaurants.find((rest) => rest.id === food.restaurant_id),
-                }));
+            const dishes = await DishModel.findByCategory(categoryId);
+
+            const foods = dishes.map((d: any) => ({
+                id: d.dish_id,
+                name: d.name,
+                description: d.description,
+                price: Number(d.price),
+                discount_price: d.discount_amount ? Number(d.price) - Number(d.discount_amount) : null,
+                category_id: d.category_id,
+                image_url: d.thumbnail_path,
+                rating: d.points ? Number(d.points) : 0,
+                total_reviews: d.rate_quantity ?? 0,
+                is_available: Boolean(d.available),
+                category: cat,
+                restaurant: null,
+            }));
+
+            console.log(`Dish by category id ${cat.category_id}: ${dishes.length} items`);
 
             return ResponseUtils.success(res, "Lấy món ăn theo danh mục thành công", foods);
         } catch (error) {

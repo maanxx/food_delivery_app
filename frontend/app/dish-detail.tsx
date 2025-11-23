@@ -1,27 +1,55 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, SafeAreaView, Dimensions } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import { Feather, AntDesign, MaterialIcons } from "@expo/vector-icons";
+import { AntDesign, Feather, MaterialIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+    Dimensions,
+    Image,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import { AppColors } from "../src/assets/styles/AppColor";
-import { FoodWithDetails } from "../src/types/food";
+import { useCart } from "../src/contexts/CartContext";
 import { foodApiClient } from "../src/services/foodApi";
+import { FoodWithDetails } from "../src/types/food";
 
 const { width } = Dimensions.get("window");
 
 const DishDetailScreen = () => {
     const router = useRouter();
     const { foodId } = useLocalSearchParams<{ foodId: string }>();
+    const { addItem } = useCart();
 
     const [food, setFood] = useState<FoodWithDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [quantity, setQuantity] = useState(1);
-    const [selectedSize, setSelectedSize] = useState("Medium");
     const [error, setError] = useState<string | null>(null);
+    const [isFav, setIsFav] = useState(false);
 
-    const sizes = ["Small", "Medium", "Large"];
+    console.log("\n\nFood", food);
 
+    const FAVORITES_KEY = "favorites_v1";
     useEffect(() => {
         loadFoodDetail();
+    }, [foodId]);
+
+    useEffect(() => {
+        const loadFav = async () => {
+            try {
+                const raw = await AsyncStorage.getItem(FAVORITES_KEY);
+                if (!raw) return;
+                const arr = JSON.parse(raw);
+                if (Array.isArray(arr) && foodId) setIsFav(arr.includes(foodId));
+            } catch (err) {
+                console.warn("loadFav error", err);
+            }
+        };
+        loadFav();
     }, [foodId]);
 
     const loadFoodDetail = async () => {
@@ -49,6 +77,26 @@ const DishDetailScreen = () => {
         }
     };
 
+    const toggleFav = async () => {
+        try {
+            const raw = await AsyncStorage.getItem(FAVORITES_KEY);
+            const arr = Array.isArray(raw ? JSON.parse(raw) : null) ? JSON.parse(raw!) : [];
+            const set = new Set(arr);
+            if (foodId) {
+                if (set.has(foodId)) {
+                    set.delete(foodId);
+                    setIsFav(false);
+                } else {
+                    set.add(foodId);
+                    setIsFav(true);
+                }
+                await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(set)));
+            }
+        } catch (err) {
+            console.warn("toggleFav error", err);
+        }
+    };
+
     const formatPrice = (price: number) => {
         return new Intl.NumberFormat("vi-VN").format(price) + "đ";
     };
@@ -56,22 +104,24 @@ const DishDetailScreen = () => {
     const getTotalPrice = () => {
         if (!food) return 0;
         const basePrice = food.price;
-        const sizeMultiplier = selectedSize === "Small" ? 0.8 : selectedSize === "Large" ? 1.2 : 1;
-        return basePrice * sizeMultiplier * quantity;
+        return basePrice * quantity;
     };
 
     const handleAddToCart = () => {
         if (!food) return;
 
-        // TODO: Implement add to cart logic
-        console.log("Add to cart:", {
-            food: food.name,
-            quantity,
-            size: selectedSize,
-            totalPrice: getTotalPrice(),
-        });
+        // Ensure we use a consistent id field (fallback to foodId)
+        const itemId = (food as any).id || (food as any).dish_id || foodId || String(Date.now());
 
-        // Show success message or navigate
+        addItem({
+            id: itemId,
+            name: food.name,
+            price: food.price,
+            image_url: food?.image_url || "",
+            quantity,
+        } as any);
+
+        console.log("Added to cart:", { id: itemId, name: food.name, price: food.price, quantity });
         router.back();
     };
 
@@ -106,9 +156,9 @@ const DishDetailScreen = () => {
                     <Feather name="arrow-left" size={24} color="#333" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Chi tiết món ăn</Text>
-                <TouchableOpacity style={styles.favoriteButton}>
-                    <Feather name="heart" size={24} color="#333" />
-                </TouchableOpacity>
+                <Pressable style={styles.favoriteButton} onPress={toggleFav}>
+                    <Feather name="heart" size={24} color={isFav ? "#ff4d6d" : "#333"} />
+                </Pressable>
             </View>
 
             <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -129,8 +179,8 @@ const DishDetailScreen = () => {
                         <Text style={styles.foodName}>{food.name}</Text>
                         <View style={styles.ratingContainer}>
                             <MaterialIcons name="star" size={20} color="#FFD700" />
-                            <Text style={styles.rating}>{food.rating.toFixed(1)}</Text>
-                            <Text style={styles.reviewCount}>({food.total_reviews} đánh giá)</Text>
+                            <Text style={styles.rating}>{(food.rating ?? 0).toFixed(1)}</Text>
+                            <Text style={styles.reviewCount}>({food.total_reviews ?? 0} đánh giá)</Text>
                         </View>
                     </View>
 
@@ -146,43 +196,6 @@ const DishDetailScreen = () => {
                     <View style={styles.descriptionSection}>
                         <Text style={styles.sectionTitle}>Mô tả</Text>
                         <Text style={styles.description}>{food.description}</Text>
-                    </View>
-
-                    {/* Restaurant Info */}
-                    {food.restaurant && (
-                        <View style={styles.restaurantSection}>
-                            <Text style={styles.sectionTitle}>Nhà hàng</Text>
-                            <View style={styles.restaurantInfo}>
-                                <Text style={styles.restaurantName}>{food.restaurant.name}</Text>
-                                <View style={styles.restaurantDetails}>
-                                    <View style={styles.restaurantRating}>
-                                        <MaterialIcons name="star" size={16} color="#FFD700" />
-                                        <Text style={styles.restaurantRatingText}>
-                                            {food.restaurant.rating.toFixed(1)} ({food.restaurant.total_reviews})
-                                        </Text>
-                                    </View>
-                                    <Text style={styles.deliveryTime}>🚚 {food.restaurant.delivery_time}</Text>
-                                </View>
-                            </View>
-                        </View>
-                    )}
-
-                    {/* Size Selection */}
-                    <View style={styles.sizeSection}>
-                        <Text style={styles.sectionTitle}>Kích cỡ</Text>
-                        <View style={styles.sizeOptions}>
-                            {sizes.map((size) => (
-                                <TouchableOpacity
-                                    key={size}
-                                    style={[styles.sizeOption, selectedSize === size && styles.selectedSizeOption]}
-                                    onPress={() => setSelectedSize(size)}
-                                >
-                                    <Text style={[styles.sizeText, selectedSize === size && styles.selectedSizeText]}>
-                                        {size}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
                     </View>
 
                     {/* Quantity Selection */}
@@ -208,11 +221,14 @@ const DishDetailScreen = () => {
                             <MaterialIcons name="schedule" size={20} color="#666" />
                             <Text style={styles.infoText}>Thời gian chuẩn bị: {food.prep_time} phút</Text>
                         </View>
-                        {food.restaurant && (
+
+                        {/* If delivery fee is available at top-level (or returned by API), show it.
+                            Use a safe access in case field doesn't exist. */}
+                        {(food as any).delivery_fee !== undefined && (
                             <View style={styles.infoItem}>
                                 <MaterialIcons name="delivery-dining" size={20} color="#666" />
                                 <Text style={styles.infoText}>
-                                    Phí giao hàng: {formatPrice(food.restaurant.delivery_fee)}
+                                    Phí giao hàng: {formatPrice((food as any).delivery_fee)}
                                 </Text>
                             </View>
                         )}
@@ -333,65 +349,6 @@ const styles = StyleSheet.create({
         fontSize: 15,
         color: "#666",
         lineHeight: 22,
-    },
-    restaurantSection: {
-        marginBottom: 20,
-        padding: 15,
-        backgroundColor: "#f8f9fa",
-        borderRadius: 12,
-    },
-    restaurantInfo: {
-        marginTop: 5,
-    },
-    restaurantName: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#333",
-        marginBottom: 5,
-    },
-    restaurantDetails: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-    },
-    restaurantRating: {
-        flexDirection: "row",
-        alignItems: "center",
-    },
-    restaurantRatingText: {
-        fontSize: 14,
-        color: "#666",
-        marginLeft: 4,
-    },
-    deliveryTime: {
-        fontSize: 14,
-        color: "#666",
-    },
-    sizeSection: {
-        marginBottom: 20,
-    },
-    sizeOptions: {
-        flexDirection: "row",
-        gap: 10,
-    },
-    sizeOption: {
-        paddingHorizontal: 20,
-        paddingVertical: 10,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: "#ddd",
-    },
-    selectedSizeOption: {
-        backgroundColor: AppColors.primary,
-        borderColor: AppColors.primary,
-    },
-    sizeText: {
-        fontSize: 14,
-        color: "#666",
-        fontWeight: "500",
-    },
-    selectedSizeText: {
-        color: "#fff",
     },
     quantitySection: {
         marginBottom: 20,

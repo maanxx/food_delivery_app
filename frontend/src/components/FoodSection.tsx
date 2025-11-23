@@ -1,27 +1,73 @@
-import React from "react";
-import { View, Text, StyleSheet, FlatList, ActivityIndicator } from "react-native";
 import { Entypo } from "@expo/vector-icons";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
 import { AppColors } from "../assets/styles/AppColor";
+import { foodApiClient } from "../services/foodApi";
 import { FoodWithDetails } from "../types/food";
 import FoodCard from "./FoodCard";
 
 interface FoodSectionProps {
     title: string;
     foods: FoodWithDetails[];
+    /** Optional backend category id; when provided the section will fetch its own foods */
+    categoryId?: string;
     isLoading?: boolean;
     onFoodPress: (food: FoodWithDetails) => void;
     onAddToCart?: (food: FoodWithDetails) => void;
     onSeeAll?: () => void;
+    favoriteIds?: Set<string>;
+    onToggleFavorite?: (foodId: string) => void;
 }
 
 const FoodSection: React.FC<FoodSectionProps> = ({
     title,
     foods,
+    categoryId,
     isLoading = false,
     onFoodPress,
     onAddToCart,
     onSeeAll,
 }) => {
+    const [localFoods, setLocalFoods] = useState<FoodWithDetails[]>([]);
+    const [localLoading, setLocalLoading] = useState<boolean>(false);
+
+    // helper to extract array from API shapes
+    const extract = (resp: any): FoodWithDetails[] => {
+        if (!resp) return [];
+        if (Array.isArray(resp)) return resp as FoodWithDetails[];
+        if (Array.isArray(resp.data)) return resp.data as FoodWithDetails[];
+        if (resp.data && Array.isArray(resp.data.foods)) return resp.data.foods as FoodWithDetails[];
+        if (resp.data && Array.isArray(resp.data.items)) return resp.data.items as FoodWithDetails[];
+        if (Array.isArray(resp.foods)) return resp.foods as FoodWithDetails[];
+        const vals = Object.values(resp || {});
+        for (const v of vals) if (Array.isArray(v)) return v as FoodWithDetails[];
+        return [];
+    };
+
+    useEffect(() => {
+        let mounted = true;
+        const fetchByCategory = async () => {
+            if (!categoryId) return;
+            setLocalLoading(true);
+            try {
+                const resp = await foodApiClient.getFoodsByCategory(categoryId);
+                if (!mounted) return;
+                const arr = extract(resp);
+                setLocalFoods(arr);
+            } catch (err) {
+                console.error("FoodSection fetch error:", err);
+                if (mounted) setLocalFoods([]);
+            } finally {
+                if (mounted) setLocalLoading(false);
+            }
+        };
+
+        fetchByCategory();
+        return () => {
+            mounted = false;
+        };
+    }, [categoryId]);
+
     const renderFoodItem = ({ item }: { item: FoodWithDetails }) => (
         <FoodCard item={item} onPress={() => onFoodPress(item)} onAddToCart={() => onAddToCart?.(item)} />
     );
@@ -33,7 +79,28 @@ const FoodSection: React.FC<FoodSectionProps> = ({
                 {onSeeAll && <Entypo name="chevron-right" size={24} color="black" onPress={onSeeAll} />}
             </View>
 
-            {isLoading ? (
+            {categoryId ? (
+                localLoading ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="small" color={AppColors.primary} />
+                    </View>
+                ) : Array.isArray(localFoods) && localFoods.length > 0 ? (
+                    <FlatList
+                        data={localFoods}
+                        renderItem={renderFoodItem}
+                        keyExtractor={(item, index) =>
+                            String(item.id ?? (item as any).dish_id ?? item.name ?? `${title}-${index}`)
+                        }
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.listContainer}
+                    />
+                ) : (
+                    <View style={styles.emptyContainer}>
+                        <Text style={styles.emptyText}>Không có món ăn nào</Text>
+                    </View>
+                )
+            ) : isLoading ? (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="small" color={AppColors.primary} />
                 </View>
@@ -41,7 +108,9 @@ const FoodSection: React.FC<FoodSectionProps> = ({
                 <FlatList
                     data={foods}
                     renderItem={renderFoodItem}
-                    keyExtractor={(item) => item.id}
+                    keyExtractor={(item, index) =>
+                        String(item.id ?? (item as any).dish_id ?? item.name ?? `${title}-${index}`)
+                    }
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.listContainer}
@@ -57,7 +126,7 @@ const FoodSection: React.FC<FoodSectionProps> = ({
 
 const styles = StyleSheet.create({
     container: {
-        marginVertical: 8,
+        marginVertical: 20,
     },
     header: {
         flexDirection: "row",
@@ -73,6 +142,7 @@ const styles = StyleSheet.create({
     },
     listContainer: {
         paddingHorizontal: 15,
+        paddingVertical: 10,
     },
     loadingContainer: {
         height: 150,
