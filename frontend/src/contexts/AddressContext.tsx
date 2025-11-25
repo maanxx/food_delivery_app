@@ -67,12 +67,7 @@ export const AddressProvider: React.FC<AddressProviderProps> = ({ children }) =>
 
             const data = await response.json();
             setAddresses(data.addresses || []);
-
-            // Set default address as selected if none is selected
-            if (!selectedAddress && data.addresses?.length > 0) {
-                const defaultAddr = data.addresses.find((addr: Address) => addr.is_default) || data.addresses[0];
-                setSelectedAddress(defaultAddr);
-            }
+            // Không tự động chọn địa chỉ mặc định khi load
         } catch (err) {
             console.error("Error loading addresses:", err);
             setError(err instanceof Error ? err.message : "Failed to load addresses");

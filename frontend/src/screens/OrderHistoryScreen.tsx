@@ -182,8 +182,8 @@ const OrderHistoryScreen = () => {
         router.push(`/order-tracking?orderId=${order.id}`);
     };
 
-    const renderOrderItem = (item: OrderItem, isLast: boolean) => (
-        <View key={item.id} style={[styles.orderItem, !isLast && styles.orderItemBorder]}>
+    const renderOrderItem = (item: OrderItem, isLast: boolean, index: number) => (
+        <View key={item.id || index} style={[styles.orderItem, !isLast && styles.orderItemBorder]}>
             <Image
                 source={{ uri: item.thumbnail_path || item.image_url || "https://via.placeholder.com/50" }}
                 style={styles.itemImage}
@@ -220,7 +220,7 @@ const OrderHistoryScreen = () => {
 
                 {/* Order Items */}
                 <View style={styles.orderItems}>
-                    {order.items.map((item, index) => renderOrderItem(item, index === order.items.length - 1))}
+                    {order.items.map((item, index) => renderOrderItem(item, index === order.items.length - 1, index))}
                 </View>
 
                 {/* Order Summary */}

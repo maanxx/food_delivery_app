@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { Animated } from "react-native";
 import {
     View,
     Text,
@@ -42,6 +43,22 @@ const SearchScreen = () => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [showResults, setShowResults] = useState<boolean>(false);
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
+    const [aiDescription, setAiDescription] = useState<string>("");
+    const [showFullDescription, setShowFullDescription] = useState(false);
+    const [aiLoading, setAiLoading] = useState(false);
+    const [fadeAnim] = useState(new Animated.Value(0));
+    // Hiệu ứng fade-in cho khung mô tả AI
+    useEffect(() => {
+        if (aiDescription) {
+            Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 400,
+                useNativeDriver: true,
+            }).start();
+        } else {
+            fadeAnim.setValue(0);
+        }
+    }, [aiDescription]);
 
     // Popular searches data
     const popularSearches: PopularSearch[] = [
@@ -90,7 +107,7 @@ const SearchScreen = () => {
             const updatedHistory = [
                 newSearch,
                 ...searchHistory.filter((item) => item.query.toLowerCase() !== query.toLowerCase()),
-            ].slice(0, 10); // Keep only 10 recent searches
+            ].slice(0, 10);
 
             setSearchHistory(updatedHistory);
             await AsyncStorage.setItem("searchHistory", JSON.stringify(updatedHistory));
@@ -108,11 +125,29 @@ const SearchScreen = () => {
         }
     };
 
+    const searchFoodByAI = async (text: string) => {
+        setAiLoading(true);
+        try {
+            const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/ai/describe-food`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: text }),
+            });
+            const data = await res.json();
+            setAiDescription(data.description);
+        } catch (err) {
+            setAiDescription("");
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
     const handleSearch = useCallback(
         async (query: string) => {
             if (!query.trim()) {
                 setShowResults(false);
                 setSearchResults([]);
+                setAiDescription("");
                 return;
             }
 
@@ -120,18 +155,29 @@ const SearchScreen = () => {
             setShowResults(true);
 
             try {
-                // Save to search history
                 await saveSearchHistory(query);
+                await searchFoodByAI(query);
 
-                // Mock search implementation
-                // In real app, this would call searchFoods from context
-                const mockResults = foods.filter(
-                    (food) =>
-                        food.name.toLowerCase().includes(query.toLowerCase()) ||
-                        food.description?.toLowerCase().includes(query.toLowerCase()),
-                );
+                const keywords = query
+                    .toLowerCase()
+                    .replace(/[^a-zA-Z0-9\u00C0-\u1EF9 ]/g, " ")
+                    .split(" ")
+                    .filter(Boolean);
 
-                // Add slight delay to simulate API call
+                const mockResults = foods.filter((food) => {
+                    const nameWords = food.name
+                        .toLowerCase()
+                        .replace(/[^a-zA-Z0-9\u00C0-\u1EF9 ]/g, " ")
+                        .split(" ")
+                        .filter(Boolean);
+                    const descWords = (food.description || "")
+                        .toLowerCase()
+                        .replace(/[^a-zA-Z0-9\u00C0-\u1EF9 ]/g, " ")
+                        .split(" ")
+                        .filter(Boolean);
+                    return keywords.some((kw) => nameWords.includes(kw) || descWords.includes(kw));
+                });
+
                 setTimeout(() => {
                     setSearchResults(mockResults);
                     setIsLoading(false);
@@ -302,22 +348,52 @@ const SearchScreen = () => {
                         </View>
                     ) : showResults ? (
                         <View style={styles.resultsContainer}>
-                            <View style={styles.resultsHeader}>
-                                <Text style={styles.resultsTitle}>Kết quả cho &ldquo;{searchQuery}&rdquo;</Text>
-                                <Text style={styles.resultsCount}>{searchResults.length} món ăn</Text>
-                            </View>
-
-                            {searchResults.length > 0 ? (
-                                <FlatList
-                                    data={searchResults}
-                                    renderItem={renderSearchResult}
-                                    keyExtractor={(item) => item.id}
-                                    showsVerticalScrollIndicator={false}
-                                    contentContainerStyle={styles.resultsList}
-                                />
-                            ) : (
-                                renderEmptyState()
-                            )}
+                            {aiLoading ? (
+                                <View style={styles.aiDescriptionContainer}>
+                                    <ActivityIndicator size="small" color={AppColors.primary} />
+                                    <Text style={styles.aiLoadingText}>Đang tạo mô tả AI...</Text>
+                                </View>
+                            ) : null}
+                            <FlatList
+                                data={searchResults}
+                                renderItem={renderSearchResult}
+                                keyExtractor={(item) => item.id}
+                                showsVerticalScrollIndicator={false}
+                                contentContainerStyle={styles.resultsList}
+                                ListHeaderComponent={
+                                    <>
+                                        {aiDescription && (
+                                            <Animated.View
+                                                style={[styles.aiDescriptionContainer, { opacity: fadeAnim }]}
+                                            >
+                                                <Text style={styles.aiDescriptionTitle}>Mô tả AI:</Text>
+                                                <Text
+                                                    style={styles.aiDescriptionText}
+                                                    numberOfLines={showFullDescription ? undefined : 4}
+                                                >
+                                                    {aiDescription}
+                                                </Text>
+                                                {aiDescription.length > 200 && (
+                                                    <TouchableOpacity
+                                                        onPress={() => setShowFullDescription((prev) => !prev)}
+                                                    >
+                                                        <Text style={styles.seeMoreText}>
+                                                            {showFullDescription ? "Thu gọn" : "Xem thêm"}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                )}
+                                            </Animated.View>
+                                        )}
+                                        <View style={styles.resultsHeader}>
+                                            <Text style={styles.resultsTitle}>
+                                                Kết quả cho &ldquo;{searchQuery}&rdquo;
+                                            </Text>
+                                            <Text style={styles.resultsCount}>{searchResults.length} món ăn</Text>
+                                        </View>
+                                    </>
+                                }
+                                ListEmptyComponent={renderEmptyState}
+                            />
                         </View>
                     ) : (
                         <View style={styles.suggestionsContainer}>
@@ -647,6 +723,36 @@ const styles = StyleSheet.create({
         color: "#666",
         textAlign: "center",
         lineHeight: 24,
+    },
+    aiDescriptionContainer: {
+        backgroundColor: "#f0f0f0",
+        borderRadius: 8,
+        padding: 12,
+        marginHorizontal: 15,
+        marginBottom: 12,
+    },
+    aiDescriptionTitle: {
+        fontSize: 14,
+        fontWeight: "bold",
+        color: "#d48806",
+        marginBottom: 4,
+    },
+    aiDescriptionText: {
+        fontSize: 15,
+        color: "#333",
+    },
+    aiLoadingText: {
+        color: AppColors.primary,
+        fontSize: 14,
+        marginTop: 8,
+        textAlign: "center",
+    },
+    seeMoreText: {
+        color: AppColors.primary,
+        fontWeight: "500",
+        marginTop: 6,
+        fontSize: 14,
+        textAlign: "right",
     },
 });
 

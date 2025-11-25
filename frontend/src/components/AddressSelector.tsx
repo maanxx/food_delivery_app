@@ -57,11 +57,11 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({ onAddressSelect }) =>
                     <Feather name="map-pin" size={16} color={AppColors.primary} />
                 </View>
                 <View style={styles.addressContainer}>
-                    <Text style={styles.deliverTo}>Giao đến</Text>
+                    {selectedAddress && selectedAddress.id ? <Text style={styles.deliverTo}>Giao đến</Text> : null}
                     <Text style={styles.selectedAddressText} numberOfLines={1}>
                         {isLoading ? (
                             <Text>Đang tải...</Text>
-                        ) : selectedAddress ? (
+                        ) : selectedAddress && selectedAddress.id ? (
                             <Text>{`${selectedAddress.title} - ${selectedAddress.address}`}</Text>
                         ) : (
                             <Text>Chọn địa chỉ giao hàng</Text>
