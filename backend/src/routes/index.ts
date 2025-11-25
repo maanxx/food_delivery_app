@@ -7,6 +7,7 @@ import vnpayRoutes from "./vnpay";
 import favoriteRoutes from "./favorite";
 import invoiceRoutes from "./invoice";
 import invoiceItemsRoutes from "./invoiceItems";
+import openAIRoutes from "./groqAI";
 
 const routes = (app: Application) => {
     /* GET */
@@ -34,8 +35,12 @@ const routes = (app: Application) => {
 
     // Invoice routes
     app.use("/api/invoice", invoiceRoutes);
+
     // Invoice Items routes
     app.use("/api/invoice-items", invoiceItemsRoutes);
+
+    // OpenAI routes
+    app.use("/api/ai", openAIRoutes);
 };
 
 export default routes;

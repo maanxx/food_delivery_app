@@ -20,6 +20,7 @@
     "express": "~4.16.1",
     "express-validator": "^7.3.0",
     "google-auth-library": "^10.5.0",
+    "groq-sdk": "^0.36.0",
     "helmet": "^8.1.0",
     "http-errors": "~1.6.3",
     "jade": "~1.11.0",
@@ -28,6 +29,7 @@
     "morgan": "~1.9.1",
     "multer": "^2.0.2",
     "mysql2": "^3.15.3",
+    "openai": "^6.9.1",
     "sequelize": "^6.37.7",
     "uuid": "^8.3.2"
   },

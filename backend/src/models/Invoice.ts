@@ -20,7 +20,7 @@ export const InvoiceModel = {
             user_id,
         ]);
         if (!rows || rows.length === 0) {
-            await pool.query("INSERT INTO Customers (customer_id, employee_id, loyal_points) VALUES (?, ?, 0)", [
+            await pool.query("INSERT INTO Customers (customer_id, user_id, loyal_points) VALUES (?, ?, 0)", [
                 user_id,
                 user_id,
             ]);
