@@ -186,12 +186,27 @@ export class AuthController {
     // Update user profile
     static async updateProfile(req: UserRequest, res: Response): Promise<void> {
         try {
+            console.log("req.userId: ", req.userId);
+
             if (!req.userId) {
                 ResponseUtils.unauthorized(res, "User không được xác thực");
                 return;
             }
 
-            const { fullname, address, gender, date_of_birth, phone_number } = req.body;
+            const { fullname, address, gender, date_of_birth, phone_number, avatar_path } = req.body;
+
+            // Chuyển đổi date_of_birth về yyyy-MM-dd nếu có
+            let formattedDob = date_of_birth;
+            if (date_of_birth) {
+                try {
+                    const d = new Date(date_of_birth);
+                    if (!isNaN(d.getTime())) {
+                        formattedDob = d.toISOString().slice(0, 10);
+                    }
+                } catch (e) {
+                    // Nếu lỗi, giữ nguyên giá trị cũ
+                }
+            }
 
             // Check if phone number is being changed and already exists
             if (phone_number) {
@@ -203,12 +218,14 @@ export class AuthController {
             }
 
             // Update user
+
             const updateData: Record<string, unknown> = {};
             if (fullname !== undefined) updateData.fullname = fullname;
-            if (address !== undefined) updateData.address = address;
+            // if (address !== undefined) updateData.address = address;
             if (gender !== undefined) updateData.gender = gender;
-            if (date_of_birth !== undefined) updateData.date_of_birth = date_of_birth;
+            if (date_of_birth !== undefined) updateData.date_of_birth = formattedDob;
             if (phone_number !== undefined) updateData.phone_number = phone_number;
+            if (avatar_path !== undefined) updateData.avatar_path = avatar_path;
 
             const updated = await UserModel.update(req.userId, updateData);
             if (!updated) {
@@ -234,9 +251,7 @@ export class AuthController {
             console.error("Update profile error:", error);
             ResponseUtils.error(res, "Lỗi server khi cập nhật profile");
         }
-    }
-
-    // Change password
+    } // Change password
     static async changePassword(req: UserRequest, res: Response): Promise<void> {
         try {
             if (!req.userId) {

@@ -22,6 +22,7 @@ interface FavoriteItem {
     id: string;
     food: FoodWithDetails;
     added_at: string;
+    isFavorite: boolean;
 }
 
 const FavoriteScreen = () => {
@@ -31,151 +32,6 @@ const FavoriteScreen = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    // Mock data for favorites
-    const mockFavorites: FavoriteItem[] = [
-        {
-            id: "1",
-            food: {
-                id: "1",
-                name: "Whopper Burger",
-                description: "Burger bò nướng với rau xanh tươi",
-                price: 85000,
-                discount_price: 95000,
-                category_id: "1",
-                restaurant_id: "1",
-                image_url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=400&h=300&fit=crop",
-                rating: 4.8,
-                total_reviews: 324,
-                is_available: true,
-                prep_time: 15,
-                created_at: "2024-01-01T00:00:00Z",
-                updated_at: "2024-01-01T00:00:00Z",
-                category: {
-                    id: "1",
-                    name: "Burgers",
-                    description: "Các loại burger ngon",
-                    image_url: null,
-                    is_active: true,
-                    sort_order: 1,
-                    created_at: "2024-01-01T00:00:00Z",
-                    updated_at: "2024-01-01T00:00:00Z",
-                },
-                restaurant: {
-                    id: "1",
-                    name: "Burger King",
-                    description: "Chuỗi burger nổi tiếng",
-                    address: "123 Nguyễn Huệ, Q.1, TP.HCM",
-                    phone: "0901234567",
-                    email: "contact@burgerking.com",
-                    image_url: null,
-                    rating: 4.5,
-                    total_reviews: 1250,
-                    is_active: true,
-                    delivery_fee: 15000,
-                    min_order: 50000,
-                    delivery_time: "20-30 phút",
-                    created_at: "2024-01-01T00:00:00Z",
-                    updated_at: "2024-01-01T00:00:00Z",
-                },
-            },
-            added_at: "2024-11-01T10:30:00Z",
-        },
-        {
-            id: "2",
-            food: {
-                id: "3",
-                name: "Pizza Margherita",
-                description: "Pizza cổ điển với cà chua, phô mai mozzarella",
-                price: 120000,
-                discount_price: 135000,
-                category_id: "2",
-                restaurant_id: "2",
-                image_url: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&h=300&fit=crop",
-                rating: 4.7,
-                total_reviews: 445,
-                is_available: true,
-                prep_time: 25,
-                created_at: "2024-01-01T00:00:00Z",
-                updated_at: "2024-01-01T00:00:00Z",
-                category: {
-                    id: "2",
-                    name: "Pizza",
-                    description: "Pizza Ý thơm ngon",
-                    image_url: null,
-                    is_active: true,
-                    sort_order: 2,
-                    created_at: "2024-01-01T00:00:00Z",
-                    updated_at: "2024-01-01T00:00:00Z",
-                },
-                restaurant: {
-                    id: "2",
-                    name: "Pizza Hut",
-                    description: "Pizza phong cách Mỹ",
-                    address: "456 Lê Lợi, Q.1, TP.HCM",
-                    phone: "0907654321",
-                    email: "info@pizzahut.com",
-                    image_url: null,
-                    rating: 4.3,
-                    total_reviews: 890,
-                    is_active: true,
-                    delivery_fee: 20000,
-                    min_order: 80000,
-                    delivery_time: "25-35 phút",
-                    created_at: "2024-01-01T00:00:00Z",
-                    updated_at: "2024-01-01T00:00:00Z",
-                },
-            },
-            added_at: "2024-10-30T14:20:00Z",
-        },
-        {
-            id: "3",
-            food: {
-                id: "4",
-                name: "Pizza Pepperoni",
-                description: "Pizza với xúc xích pepperoni thơm ngon",
-                price: 145000,
-                discount_price: null,
-                category_id: "2",
-                restaurant_id: "2",
-                image_url: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=300&fit=crop",
-                rating: 4.9,
-                total_reviews: 378,
-                is_available: true,
-                prep_time: 30,
-                created_at: "2024-01-01T00:00:00Z",
-                updated_at: "2024-01-01T00:00:00Z",
-                category: {
-                    id: "2",
-                    name: "Pizza",
-                    description: "Pizza Ý thơm ngon",
-                    image_url: null,
-                    is_active: true,
-                    sort_order: 2,
-                    created_at: "2024-01-01T00:00:00Z",
-                    updated_at: "2024-01-01T00:00:00Z",
-                },
-                restaurant: {
-                    id: "2",
-                    name: "Pizza Hut",
-                    description: "Pizza phong cách Mỹ",
-                    address: "456 Lê Lợi, Q.1, TP.HCM",
-                    phone: "0907654321",
-                    email: "info@pizzahut.com",
-                    image_url: null,
-                    rating: 4.3,
-                    total_reviews: 890,
-                    is_active: true,
-                    delivery_fee: 20000,
-                    min_order: 80000,
-                    delivery_time: "25-35 phút",
-                    created_at: "2024-01-01T00:00:00Z",
-                    updated_at: "2024-01-01T00:00:00Z",
-                },
-            },
-            added_at: "2024-10-28T09:15:00Z",
-        },
-    ];
-
     useEffect(() => {
         loadFavorites();
     }, []);
@@ -183,9 +39,16 @@ const FavoriteScreen = () => {
     const loadFavorites = async () => {
         setLoading(true);
         try {
-            // Simulate API call
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            setFavorites(mockFavorites);
+            const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/favorite/${user?.user_id}`);
+            const apiData = await res.json();
+            const data = Array.isArray(apiData) ? apiData : apiData.data || [];
+            const mapped = data.map((item: FavoriteItem) => ({
+                id: item.favorite_id || item.id,
+                food: item.food,
+                added_at: item.added_at || item.created_at,
+                isFavorite: true,
+            }));
+            setFavorites(mapped);
         } catch (error) {
             console.error("Load favorites error:", error);
         } finally {
@@ -199,8 +62,8 @@ const FavoriteScreen = () => {
         setRefreshing(false);
     };
 
-    const handleRemoveFromFavorites = (favoriteId: string, foodName: string) => {
-        Alert.alert("Xóa khỏi yêu thích", `Bạn có chắc chắn muốn xóa "${foodName}" khỏi danh sách yêu thích?`, [
+    const handleRemoveFromFavorites = async (favoriteId: string, food: FoodWithDetails) => {
+        Alert.alert("Xóa khỏi yêu thích", `Bạn có chắc chắn muốn xóa "${food.name}" khỏi danh sách yêu thích?`, [
             {
                 text: "Hủy",
                 style: "cancel",
@@ -208,12 +71,28 @@ const FavoriteScreen = () => {
             {
                 text: "Xóa",
                 style: "destructive",
-                onPress: () => {
-                    setFavorites((prev) => prev.filter((item) => item.id !== favoriteId));
+                onPress: async () => {
+                    try {
+                        const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/favorite/remove`, {
+                            method: "DELETE",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ user_id: user?.user_id, dish_id: food.id }),
+                        });
+                        const result = await res.json();
+                        if (result.success) {
+                            await loadFavorites();
+                        } else {
+                            Alert.alert("Lỗi", result.error || "Không thể xóa khỏi yêu thích");
+                        }
+                    } catch {
+                        Alert.alert("Lỗi", "Không thể kết nối đến máy chủ");
+                    }
                 },
             },
         ]);
     };
+
+    // Removed unused handleToggleFavorite
 
     const handleFoodPress = (food: FoodWithDetails) => {
         router.push(`/dish-detail?foodId=${food.id}`);
@@ -249,9 +128,9 @@ const FavoriteScreen = () => {
                 )}
                 <TouchableOpacity
                     style={styles.favoriteButton}
-                    onPress={() => handleRemoveFromFavorites(item.id, item.food.name)}
+                    onPress={() => handleRemoveFromFavorites(item.id, item.food)}
                 >
-                    <MaterialIcons name="favorite" size={20} color="#FF6B6B" />
+                    <MaterialIcons name="favorite" size={20} color={item.isFavorite ? "#FF6B6B" : "#ccc"} />
                 </TouchableOpacity>
             </View>
 

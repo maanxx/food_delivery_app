@@ -12,7 +12,9 @@ import {
     Text,
     TouchableOpacity,
     View,
+    ActivityIndicator,
 } from "react-native";
+import { useAuth } from "../src/contexts/AuthContext";
 import { AppColors } from "../src/assets/styles/AppColor";
 import { useCart } from "../src/contexts/CartContext";
 import { foodApiClient } from "../src/services/foodApi";
@@ -24,12 +26,14 @@ const DishDetailScreen = () => {
     const router = useRouter();
     const { foodId } = useLocalSearchParams<{ foodId: string }>();
     const { addItem } = useCart();
+    const { user } = useAuth();
 
     const [food, setFood] = useState<FoodWithDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [quantity, setQuantity] = useState(1);
     const [error, setError] = useState<string | null>(null);
     const [isFav, setIsFav] = useState(false);
+    const [favLoading, setFavLoading] = useState(false);
 
     console.log("\n\nFood", food);
 
@@ -44,7 +48,8 @@ const DishDetailScreen = () => {
                 const raw = await AsyncStorage.getItem(FAVORITES_KEY);
                 if (!raw) return;
                 const arr = JSON.parse(raw);
-                if (Array.isArray(arr) && foodId) setIsFav(arr.includes(foodId));
+                // Đảm bảo foodId là string khi kiểm tra
+                if (Array.isArray(arr) && foodId) setIsFav(arr.includes(String(foodId)));
             } catch (err) {
                 console.warn("loadFav error", err);
             }
@@ -77,23 +82,51 @@ const DishDetailScreen = () => {
         }
     };
 
-    const toggleFav = async () => {
+    const handleToggleFavoriteDb = async () => {
+        if (!user?.user_id || !foodId) return;
+        setFavLoading(true);
         try {
+            let arr: string[] = [];
             const raw = await AsyncStorage.getItem(FAVORITES_KEY);
-            const arr = Array.isArray(raw ? JSON.parse(raw) : null) ? JSON.parse(raw!) : [];
-            const set = new Set(arr);
-            if (foodId) {
-                if (set.has(foodId)) {
-                    set.delete(foodId);
-                    setIsFav(false);
-                } else {
-                    set.add(foodId);
+            if (raw) arr = JSON.parse(raw);
+            if (!Array.isArray(arr)) arr = [];
+
+            if (!isFav) {
+                const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/favorite/add`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_id: user.user_id, dish_id: foodId }),
+                });
+                const result = await res.json();
+                if (result.success) {
                     setIsFav(true);
+                    await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify([...arr, String(foodId)]));
+                } else {
+                    alert(result.error || "Không thể thêm vào yêu thích");
                 }
-                await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(set)));
+            } else {
+                // Xóa khỏi yêu thích
+                const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/favorite/remove`, {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_id: user.user_id, dish_id: foodId }),
+                });
+                const result = await res.json();
+                if (result.success) {
+                    setIsFav(false);
+                    await AsyncStorage.setItem(
+                        FAVORITES_KEY,
+                        JSON.stringify(arr.filter((id) => id !== String(foodId))),
+                    );
+                } else {
+                    alert(result.error || "Không thể xóa khỏi yêu thích");
+                }
             }
         } catch (err) {
-            console.warn("toggleFav error", err);
+            alert("Lỗi kết nối. Vui lòng thử lại.");
+            console.warn("toggleFav DB error", err);
+        } finally {
+            setFavLoading(false);
         }
     };
 
@@ -156,8 +189,12 @@ const DishDetailScreen = () => {
                     <Feather name="arrow-left" size={24} color="#333" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Chi tiết món ăn</Text>
-                <Pressable style={styles.favoriteButton} onPress={toggleFav}>
-                    <Feather name="heart" size={24} color={isFav ? "#ff4d6d" : "#333"} />
+                <Pressable style={styles.favoriteButton} onPress={favLoading ? undefined : handleToggleFavoriteDb}>
+                    {favLoading ? (
+                        <ActivityIndicator size={20} color="#ff4d6d" />
+                    ) : (
+                        <Feather name="heart" size={24} color={isFav ? "#ff4d6d" : "#333"} />
+                    )}
                 </Pressable>
             </View>
 

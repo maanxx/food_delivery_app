@@ -51,6 +51,10 @@ export const UserModel = {
             "role",
             "google_id",
             "avatar",
+            "avatar_path",
+            "address",
+            "gender",
+            "date_of_birth",
         ];
         for (const key of allowed) {
             // @ts-ignore

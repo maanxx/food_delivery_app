@@ -3,14 +3,11 @@ import {
     View,
     Text,
     StyleSheet,
-    ScrollView,
-    TextInput,
     TouchableOpacity,
     SafeAreaView,
     Image,
     FlatList,
     Pressable,
-    ActivityIndicator,
     RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -25,22 +22,16 @@ import GridCategorySection from "../components/GridCategorySection";
 import { useFood } from "../contexts/FoodContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
+import { useAddress } from "../contexts/AddressContext";
+import AddressSelector from "../components/AddressSelector";
 import { FoodWithDetails } from "../types/food";
 
 const HomeScreen = () => {
     const router = useRouter();
     const { user } = useAuth();
-    const {
-        foods,
-        categories,
-        featuredFoods,
-        popularFoods,
-        isLoading,
-        error,
-        loadAllFoods,
-        clearError,
-        refreshAllData,
-    } = useFood();
+    const { foods, categories, popularFoods, isLoading, error, loadAllFoods, clearError, refreshAllData } = useFood();
+    // Address context is available for components that need it
+    useAddress();
 
     const [selectedCategory, setSelectedCategory] = useState<string>("All");
     const [showCart, setShowCart] = useState<boolean>(false);
@@ -76,8 +67,8 @@ const HomeScreen = () => {
         console.log("Selected category:", categoryId);
         if (categoryId === "All") {
             loadAllFoods();
-        } else {
         }
+        // TODO: Load foods for specific category
     };
 
     const onRefresh = async () => {
@@ -128,7 +119,7 @@ const HomeScreen = () => {
     }
 
     // Chuẩn bị dữ liệu sections cho FlatList
-    let sections: Array<{
+    const sections: Array<{
         key: string;
         title: string;
         foods: FoodWithDetails[];
@@ -136,7 +127,7 @@ const HomeScreen = () => {
     }> = [];
 
     // Helper để lọc foods hợp lệ
-    const validFoods = (arr: any[]) =>
+    const validFoods = (arr: unknown[]) =>
         Array.isArray(arr)
             ? arr.filter(
                   (food) =>
@@ -213,19 +204,21 @@ const HomeScreen = () => {
                 </View>
             </View>
 
+            {/* Address Selector */}
+            <AddressSelector key="address-selector" />
+
             {/* Categories */}
             <View style={styles.categoriesContainer}>
-                <ScrollView
+                <FlatList
+                    data={allCategories}
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.categoriesList}
-                >
-                    {allCategories.map((item) => {
+                    keyExtractor={(item) => item.category_id}
+                    renderItem={({ item }) => {
                         const isSelected = selectedCategory === item.category_id;
-                        // Sửa key ở đây: dùng item.category_id hoặc item.id, fallback về index nếu cần
                         return (
                             <TouchableOpacity
-                                key={item.category_id || item.id}
                                 style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
                                 onPress={() => handleCategoryPress(item.category_id)}
                             >
@@ -234,8 +227,8 @@ const HomeScreen = () => {
                                 </Text>
                             </TouchableOpacity>
                         );
-                    })}
-                </ScrollView>
+                    }}
+                />
             </View>
         </>
     );
@@ -245,7 +238,6 @@ const HomeScreen = () => {
         if (selectedCategory === "All" || item.type === "popular") {
             return (
                 <FoodSection
-                    key={item.key}
                     title={item.title}
                     foods={item.foods}
                     isLoading={isLoading}
@@ -257,7 +249,6 @@ const HomeScreen = () => {
         // Nếu chọn category khác "All", dùng GridCategorySection
         return (
             <GridCategorySection
-                key={item.key}
                 title={item.title}
                 foods={item.foods}
                 isLoading={isLoading}
@@ -272,8 +263,9 @@ const HomeScreen = () => {
             <FlatList
                 data={sections}
                 renderItem={renderSection}
-                keyExtractor={(item) => item.key}
+                keyExtractor={(item, index) => item.key?.toString() ?? `section-${index}`}
                 ListHeaderComponent={renderHeader}
+                nestedScrollEnabled={true}
                 ListFooterComponent={
                     error ? (
                         <View style={styles.errorContainer}>

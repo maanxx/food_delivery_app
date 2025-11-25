@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -12,36 +12,36 @@ import {
     ActivityIndicator,
     Image,
     Platform,
+    Modal,
 } from "react-native";
 import { MaterialIcons, AntDesign, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
 
 import { useAuth } from "../contexts/AuthContext";
 import { AppColors } from "../assets/styles/AppColor";
 import { UpdateProfileData, ChangePasswordData } from "../types/auth";
 
 const ProfileScreen = () => {
-    const { user, logout, updateProfile, changePassword } = useAuth();
-    const [avatarUri, setAvatarUri] = useState<string | null>(
-        (user as any)?.avatar_path || (user as any)?.avatar_url || null,
-    );
+    const router = useRouter();
+    const { user, logout, updateProfile, changePassword, checkAuthStatus } = useAuth();
+    const [avatarUri, setAvatarUri] = useState<string | null>(user?.avatar_path || user?.avatar || null);
     const [avatarLoading, setAvatarLoading] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [isChangingPassword, setIsChangingPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [showGenderPicker, setShowGenderPicker] = useState(false);
+    const [showDateInput, setShowDateInput] = useState(false);
 
-    // Profile form state (support multiple addresses)
-    const initialAddresses: string[] = Array.isArray((user as any)?.addresses)
-        ? (user as any).addresses
-        : (user as any)?.address
-        ? [(user as any).address]
-        : [];
-
+    // Profile form state with all database fields
     const [profileForm, setProfileForm] = useState({
-        fullName: user?.fullName || "",
-        phone: user?.phone || "",
+        fullname: user?.fullname || "",
+        address: user?.address || "",
+        gender: user?.gender || ("Other" as "Male" | "Female" | "Other"),
+        date_of_birth: user?.date_of_birth || "",
+        phone_number: user?.phone_number || "",
         email: user?.email || "",
-        addresses: initialAddresses,
     });
 
     // Password form state
@@ -51,54 +51,74 @@ const ProfileScreen = () => {
         confirmPassword: "",
     });
 
-    // helpers for addresses
-    const addAddressField = () => {
-        setProfileForm((prev) => ({ ...prev, addresses: [...(prev.addresses || []), ""] }));
-    };
-    const removeAddress = (index: number) => {
-        setProfileForm((prev) => {
-            const arr = [...(prev.addresses || [])];
-            arr.splice(index, 1);
-            return { ...prev, addresses: arr };
-        });
-    };
-    const updateAddress = (index: number, text: string) => {
-        setProfileForm((prev) => {
-            const arr = [...(prev.addresses || [])];
-            arr[index] = text;
-            return { ...prev, addresses: arr };
-        });
-    };
+    // Refresh user data on component mount
+    useEffect(() => {
+        const refreshUserData = async () => {
+            setRefreshing(true);
+            try {
+                await checkAuthStatus();
+            } catch (error) {
+                console.error("Error refreshing user data:", error);
+            } finally {
+                setRefreshing(false);
+            }
+        };
+
+        refreshUserData();
+    }, []);
+
+    // Update form when user data changes
+    useEffect(() => {
+        if (user) {
+            setProfileForm({
+                fullname: user.fullname || "",
+                address: user.address || "",
+                gender: user.gender || "Other",
+                date_of_birth: user.date_of_birth || "",
+                phone_number: user.phone_number || "",
+                email: user.email || "",
+            });
+            setAvatarUri(user.avatar_path || user.avatar || null);
+        }
+    }, [user]);
 
     const handleUpdateProfile = async () => {
-        if (!profileForm.fullName.trim()) {
+        // Validation
+        if (!profileForm.fullname.trim()) {
             Alert.alert("Lỗi", "Vui lòng nhập họ tên");
             return;
         }
 
-        if (!profileForm.phone.trim()) {
+        if (!profileForm.phone_number.trim()) {
             Alert.alert("Lỗi", "Vui lòng nhập số điện thoại");
+            return;
+        }
+
+        // Phone validation
+        const phoneRegex = /^[0-9]{10,11}$/;
+        if (!phoneRegex.test(profileForm.phone_number.replace(/\D/g, ""))) {
+            Alert.alert("Lỗi", "Số điện thoại không hợp lệ");
             return;
         }
 
         setLoading(true);
         try {
-            // include addresses (array) and address (first) in update payload
-            const addresses = Array.isArray(profileForm.addresses)
-                ? profileForm.addresses.map((a: string) => (a || "").trim()).filter(Boolean)
-                : [];
-            const updateData: any = {
-                fullName: profileForm.fullName.trim(),
-                phone: profileForm.phone.trim(),
-                addresses: addresses,
-                // keep legacy single-field for backward compatibility
-                address: addresses.length > 0 ? addresses[0] : "",
+            const updateData: UpdateProfileData = {
+                fullname: profileForm.fullname.trim(),
+                address: profileForm.address.trim(),
+                gender: profileForm.gender as "Male" | "Female" | "Other",
+                date_of_birth: profileForm.date_of_birth,
+                phone_number: profileForm.phone_number.trim(),
             };
 
             const result = await updateProfile(updateData);
-            if (result.success) {
+            console.log("result: ", result);
+
+            if (result) {
                 Alert.alert("Thành công", "Cập nhật thông tin thành công!");
                 setIsEditing(false);
+                // Refresh user data
+                await checkAuthStatus();
             } else {
                 Alert.alert("Lỗi", result.message || "Có lỗi xảy ra");
             }
@@ -169,22 +189,20 @@ const ProfileScreen = () => {
                 style: "destructive",
                 onPress: async () => {
                     await logout();
+                    router.replace("/login");
                 },
             },
         ]);
     };
 
     const cancelEdit = () => {
-        const resetAddresses: string[] = Array.isArray((user as any)?.addresses)
-            ? (user as any).addresses
-            : (user as any)?.address
-            ? [(user as any).address]
-            : [];
         setProfileForm({
-            fullName: user?.fullName || "",
-            phone: user?.phone || "",
+            fullname: user?.fullname || "",
+            address: user?.address || "",
+            gender: user?.gender || "Other",
+            date_of_birth: user?.date_of_birth || "",
+            phone_number: user?.phone_number || "",
             email: user?.email || "",
-            addresses: resetAddresses,
         });
         setIsEditing(false);
     };
@@ -200,7 +218,6 @@ const ProfileScreen = () => {
 
     const handlePickImage = async () => {
         try {
-            // request permission on platforms that need it
             if (Platform.OS !== "web") {
                 const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
                 if (status !== "granted") {
@@ -216,19 +233,15 @@ const ProfileScreen = () => {
                 quality: 0.7,
             });
 
-            if (result.cancelled) return;
+            if (result.canceled) return;
 
-            const uri = (result as any).uri;
-            setAvatarUri(uri); // show preview immediately
+            const uri = result.assets?.[0]?.uri;
+            if (!uri) return;
 
-            // upload / save avatar (backend may accept avatar_path as URL or handle upload separately)
+            setAvatarUri(uri);
             setAvatarLoading(true);
             try {
-                const updateData: any = { avatar_path: uri };
-                const res = await updateProfile(updateData);
-                if (!res?.success) {
-                    Alert.alert("Lỗi", res?.message || "Không lưu được avatar trên server");
-                }
+                Alert.alert("Thông báo", "Tính năng upload avatar đang được phát triển");
             } catch (err) {
                 console.error("Upload avatar error:", err);
                 Alert.alert("Lỗi", "Có lỗi khi cập nhật avatar");
@@ -238,6 +251,32 @@ const ProfileScreen = () => {
         } catch (err) {
             console.error("Image pick error:", err);
         }
+    };
+
+    const formatDate = (dateStr?: string) => {
+        if (!dateStr) return "Chưa cập nhật";
+        const date = new Date(dateStr);
+        return date.toLocaleDateString("vi-VN");
+    };
+
+    const handleGenderSelect = (gender: "Male" | "Female" | "Other") => {
+        setProfileForm((prev) => ({ ...prev, gender }));
+        setShowGenderPicker(false);
+    };
+
+    const validateAndSetDate = (dateStr: string) => {
+        // Simple date validation (YYYY-MM-DD format)
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (dateRegex.test(dateStr)) {
+            const date = new Date(dateStr);
+            if (date <= new Date()) {
+                // Must be in the past
+                setProfileForm((prev) => ({ ...prev, date_of_birth: dateStr }));
+                setShowDateInput(false);
+                return;
+            }
+        }
+        Alert.alert("Lỗi", "Vui lòng nhập ngày theo định dạng YYYY-MM-DD");
     };
 
     return (
@@ -255,7 +294,7 @@ const ProfileScreen = () => {
                         )}
                     </Pressable>
 
-                    <Text style={styles.userName}>{user?.fullName}</Text>
+                    <Text style={styles.userName}>{user?.fullname || "Người dùng"}</Text>
                     <Text style={styles.userEmail}>{user?.email}</Text>
                 </View>
 
@@ -278,71 +317,54 @@ const ProfileScreen = () => {
                             {isEditing ? (
                                 <TextInput
                                     style={styles.fieldValue}
-                                    value={profileForm.fullName}
-                                    onChangeText={(text) => setProfileForm((prev) => ({ ...prev, fullName: text }))}
+                                    value={profileForm.fullname}
+                                    onChangeText={(text) => setProfileForm((prev) => ({ ...prev, fullname: text }))}
                                     placeholder="Nhập họ tên"
                                 />
                             ) : (
-                                <Text style={styles.fieldValue}>{user?.fullName}</Text>
+                                <Text style={styles.fieldValue}>{user?.fullname || "Chưa cập nhật"}</Text>
                             )}
                         </View>
                     </View>
 
-                    {/* Addresses Field: support multiple */}
+                    {/* Gender Field */}
                     <View style={styles.fieldContainer}>
-                        <Text style={styles.fieldLabel}>ĐỊA CHỈ</Text>
-                        <View style={{ marginTop: 8 }}>
+                        <Text style={styles.fieldLabel}>GIỚI TÍNH</Text>
+                        <View style={styles.inputContainer}>
                             {isEditing ? (
-                                <>
-                                    {(profileForm.addresses || []).map((addr: string, idx: number) => (
-                                        <View
-                                            key={idx}
-                                            style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}
-                                        >
-                                            <TextInput
-                                                style={[
-                                                    styles.fieldValue,
-                                                    {
-                                                        flex: 1,
-                                                        minHeight: 40,
-                                                        borderBottomWidth: 1,
-                                                        borderBottomColor: "#E0E0E0",
-                                                        paddingVertical: 6,
-                                                    },
-                                                ]}
-                                                value={addr}
-                                                onChangeText={(text) => updateAddress(idx, text)}
-                                                placeholder={`Địa chỉ ${idx + 1}`}
-                                                multiline
-                                            />
-                                            <TouchableOpacity
-                                                onPress={() => removeAddress(idx)}
-                                                style={{ marginLeft: 8 }}
-                                            >
-                                                <Text style={{ color: "red" }}>Xóa</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    ))}
-                                    <TouchableOpacity onPress={addAddressField} style={{ marginTop: 6 }}>
-                                        <Text style={{ color: AppColors.primary, fontWeight: "600" }}>
-                                            + Thêm địa chỉ
-                                        </Text>
-                                    </TouchableOpacity>
-                                </>
+                                <TouchableOpacity onPress={() => setShowGenderPicker(true)} style={styles.pickerButton}>
+                                    <Text style={styles.fieldValue}>
+                                        {profileForm.gender === "Male"
+                                            ? "Nam"
+                                            : profileForm.gender === "Female"
+                                            ? "Nữ"
+                                            : "Khác"}
+                                    </Text>
+                                    <MaterialIcons name="arrow-drop-down" size={24} color={AppColors.primary} />
+                                </TouchableOpacity>
                             ) : (
-                                <View style={styles.inputContainer}>
-                                    {Array.isArray((user as any)?.addresses) && (user as any).addresses.length > 0 ? (
-                                        (user as any).addresses.map((a: string, i: number) => (
-                                            <Text key={i} style={styles.fieldValue}>
-                                                {a}
-                                            </Text>
-                                        ))
-                                    ) : (user as any)?.address ? (
-                                        <Text style={styles.fieldValue}>{(user as any).address}</Text>
-                                    ) : (
-                                        <Text style={styles.fieldValue}>Chưa có địa chỉ</Text>
-                                    )}
-                                </View>
+                                <Text style={styles.fieldValue}>
+                                    {user?.gender === "Male" ? "Nam" : user?.gender === "Female" ? "Nữ" : "Khác"}
+                                </Text>
+                            )}
+                        </View>
+                    </View>
+
+                    {/* Date of Birth Field */}
+                    <View style={styles.fieldContainer}>
+                        <Text style={styles.fieldLabel}>NGÀY SINH</Text>
+                        <View style={styles.inputContainer}>
+                            {isEditing ? (
+                                <TouchableOpacity onPress={() => setShowDateInput(true)} style={styles.pickerButton}>
+                                    <Text style={styles.fieldValue}>
+                                        {profileForm.date_of_birth
+                                            ? formatDate(profileForm.date_of_birth)
+                                            : "Chọn ngày sinh"}
+                                    </Text>
+                                    <MaterialIcons name="date-range" size={20} color={AppColors.primary} />
+                                </TouchableOpacity>
+                            ) : (
+                                <Text style={styles.fieldValue}>{formatDate(user?.date_of_birth)}</Text>
                             )}
                         </View>
                     </View>
@@ -354,13 +376,13 @@ const ProfileScreen = () => {
                             {isEditing ? (
                                 <TextInput
                                     style={styles.fieldValue}
-                                    value={profileForm.phone}
-                                    onChangeText={(text) => setProfileForm((prev) => ({ ...prev, phone: text }))}
+                                    value={profileForm.phone_number}
+                                    onChangeText={(text) => setProfileForm((prev) => ({ ...prev, phone_number: text }))}
                                     placeholder="Nhập số điện thoại"
                                     keyboardType="phone-pad"
                                 />
                             ) : (
-                                <Text style={styles.fieldValue}>{user?.phone}</Text>
+                                <Text style={styles.fieldValue}>{user?.phone_number || "Chưa cập nhật"}</Text>
                             )}
                         </View>
                     </View>
@@ -486,7 +508,81 @@ const ProfileScreen = () => {
                         <Text style={styles.logoutButtonText}>Đăng xuất</Text>
                     </Pressable>
                 </View>
+
+                {/* Loading overlay when refreshing */}
+                {refreshing && (
+                    <View style={styles.loadingOverlay}>
+                        <ActivityIndicator size="large" color={AppColors.primary} />
+                        <Text style={styles.loadingText}>Đang tải dữ liệu...</Text>
+                    </View>
+                )}
             </ScrollView>
+
+            {/* Gender Picker Modal */}
+            <Modal
+                visible={showGenderPicker}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowGenderPicker(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Chọn giới tính</Text>
+
+                        <TouchableOpacity style={styles.modalOption} onPress={() => handleGenderSelect("Male")}>
+                            <Text style={styles.modalOptionText}>Nam</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.modalOption} onPress={() => handleGenderSelect("Female")}>
+                            <Text style={styles.modalOptionText}>Nữ</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.modalOption} onPress={() => handleGenderSelect("Other")}>
+                            <Text style={styles.modalOptionText}>Khác</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.modalCancel} onPress={() => setShowGenderPicker(false)}>
+                            <Text style={styles.modalCancelText}>Hủy</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Date Input Modal */}
+            <Modal
+                visible={showDateInput}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowDateInput(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Nhập ngày sinh</Text>
+                        <Text style={styles.modalSubtitle}>Định dạng: YYYY-MM-DD (ví dụ: 1990-01-15)</Text>
+
+                        <TextInput
+                            style={styles.dateInput}
+                            placeholder="1990-01-15"
+                            value={profileForm.date_of_birth}
+                            onChangeText={(text) => setProfileForm((prev) => ({ ...prev, date_of_birth: text }))}
+                            keyboardType="numeric"
+                        />
+
+                        <View style={styles.modalButtonRow}>
+                            <TouchableOpacity style={styles.modalCancel} onPress={() => setShowDateInput(false)}>
+                                <Text style={styles.modalCancelText}>Hủy</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.modalSave}
+                                onPress={() => validateAndSetDate(profileForm.date_of_birth)}
+                            >
+                                <Text style={styles.modalSaveText}>Lưu</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 };
@@ -579,8 +675,18 @@ const styles = StyleSheet.create({
         fontWeight: "normal",
         flex: 1,
     },
+    multilineInput: {
+        minHeight: 60,
+        textAlignVertical: "top",
+    },
     disabledText: {
         color: "#666",
+    },
+    pickerButton: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingVertical: 5,
     },
     buttonRow: {
         flexDirection: "row",
@@ -629,6 +735,97 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: "500",
         color: "red",
+    },
+    loadingOverlay: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(255, 255, 255, 0.8)",
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 1000,
+    },
+    loadingText: {
+        marginTop: 10,
+        fontSize: 16,
+        color: AppColors.primary,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    modalContent: {
+        backgroundColor: "#fff",
+        borderRadius: 10,
+        padding: 20,
+        width: "80%",
+        maxWidth: 300,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: "bold",
+        textAlign: "center",
+        marginBottom: 20,
+        color: "#333",
+    },
+    modalSubtitle: {
+        fontSize: 14,
+        textAlign: "center",
+        marginBottom: 15,
+        color: "#666",
+    },
+    modalOption: {
+        paddingVertical: 15,
+        paddingHorizontal: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: "#E0E0E0",
+    },
+    modalOptionText: {
+        fontSize: 16,
+        textAlign: "center",
+        color: "#333",
+    },
+    modalCancel: {
+        paddingVertical: 15,
+        paddingHorizontal: 10,
+        marginTop: 10,
+        backgroundColor: "#f0f0f0",
+        borderRadius: 8,
+    },
+    modalCancelText: {
+        fontSize: 16,
+        textAlign: "center",
+        color: "#666",
+    },
+    modalSave: {
+        paddingVertical: 15,
+        paddingHorizontal: 10,
+        marginTop: 10,
+        backgroundColor: AppColors.primary,
+        borderRadius: 8,
+    },
+    modalSaveText: {
+        fontSize: 16,
+        textAlign: "center",
+        color: "#fff",
+    },
+    modalButtonRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginTop: 10,
+    },
+    dateInput: {
+        borderWidth: 1,
+        borderColor: "#E0E0E0",
+        borderRadius: 8,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        fontSize: 16,
+        marginBottom: 20,
     },
 });
 

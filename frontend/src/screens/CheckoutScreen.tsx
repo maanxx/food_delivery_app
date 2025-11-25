@@ -4,46 +4,17 @@ import React, { useState } from "react";
 import { Image, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { AppColors } from "../assets/styles/AppColor";
 import { CartItem, useCart } from "../contexts/CartContext";
-
-interface Address {
-    id: string;
-    name: string;
-    address: string;
-    phone: string;
-    isDefault: boolean;
-}
+import { useAddress } from "../contexts/AddressContext";
 
 const CheckoutScreen = () => {
+    const [showAllAddresses, setShowAllAddresses] = useState(false);
     const router = useRouter();
     const { state, clearCart } = useCart();
     const cartItems = state.items;
     const cartTotal = state.total;
 
-    // Debug logs
-    console.log("CheckoutScreen - state:", state);
-    console.log("CheckoutScreen - cartItems:", cartItems);
-    console.log("CheckoutScreen - cartTotal:", cartTotal);
-    console.log("CheckoutScreen - cartItems length:", cartItems?.length);
-
-    // Mock addresses
-    const [addresses] = useState<Address[]>([
-        {
-            id: "1",
-            name: "Văn phòng",
-            address: "123 Nguyễn Huệ, Quận 1, TP.HCM",
-            phone: "0901234567",
-            isDefault: true,
-        },
-        {
-            id: "2",
-            name: "Nhà riêng",
-            address: "456 Lê Lợi, Quận 3, TP.HCM",
-            phone: "0907654321",
-            isDefault: false,
-        },
-    ]);
-
-    const [selectedAddress, setSelectedAddress] = useState(addresses[0]);
+    // Lấy addresses từ context
+    const { addresses, selectedAddress, selectAddress, isLoading } = useAddress();
     const [paymentMethod, setPaymentMethod] = useState("cash");
     const [note, setNote] = useState("");
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -59,6 +30,18 @@ const CheckoutScreen = () => {
     const total = subtotal + deliveryFee;
 
     const handlePlaceOrder = async () => {
+        if (paymentMethod === "vnpay") {
+            router.push({
+                pathname: "/payment",
+                params: {
+                    total: total.toString(),
+                    address: selectedAddress?.address || "",
+                    note,
+                },
+            });
+            return;
+        }
+
         setIsPlacingOrder(true);
 
         // Simulate API call
@@ -71,8 +54,7 @@ const CheckoutScreen = () => {
             // Generate order data
             const orderNumber = `ORD-${Date.now()}`;
             const estimatedTime = "30-45 phút";
-            const paymentMethodText =
-                paymentMethod === "cash" ? "Tiền mặt" : paymentMethod === "card" ? "Thẻ tín dụng" : "Ví MoMo";
+            const paymentMethodText = "Tiền mặt";
 
             // Navigate to OrderSuccess with parameters
             router.replace({
@@ -89,43 +71,46 @@ const CheckoutScreen = () => {
     };
 
     const renderCartItem = (item: CartItem) => (
-        <View key={item.id} style={styles.cartItem}>
+        <View key={`${item.id}`} style={styles.cartItem}>
             <Image
                 source={{ uri: item.image_url || item.image || "https://via.placeholder.com/60" }}
                 style={styles.itemImage}
             />
             <View style={styles.itemInfo}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                <Text style={styles.itemRestaurant}>{item.restaurant_name || item.restaurant || "Restaurant"}</Text>
+                <Text style={styles.itemName}>{`${item.name ?? ""}`}</Text>
                 <View style={styles.itemBottom}>
-                    <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
-                    <Text style={styles.quantity}>x{item.quantity}</Text>
+                    <Text style={styles.itemPrice}>{`${formatPrice(item.price ?? 0)}`}</Text>
+                    <Text style={styles.quantity}>{`x${item.quantity ?? 0}`}</Text>
                 </View>
             </View>
-            <Text style={styles.itemTotal}>{formatPrice(item.price * item.quantity)}</Text>
+            <Text style={styles.itemTotal}>{`${formatPrice((item.price ?? 0) * (item.quantity ?? 0))}`}</Text>
         </View>
     );
 
-    const renderAddressOption = (address: Address) => (
+    const renderAddressOption = (address) => (
         <TouchableOpacity
-            key={address.id}
-            style={[styles.addressOption, selectedAddress.id === address.id && styles.selectedAddressOption]}
-            onPress={() => setSelectedAddress(address)}
+            key={`${address.id}`}
+            style={[
+                styles.addressOption,
+                selectedAddress && selectedAddress.id === address.id && styles.selectedAddressOption,
+            ]}
+            onPress={() => selectAddress(address)}
         >
             <View style={styles.radioButton}>
-                {selectedAddress.id === address.id && <View style={styles.radioButtonSelected} />}
+                {selectedAddress && selectedAddress.id === address.id && <View style={styles.radioButtonSelected} />}
             </View>
             <View style={styles.addressInfo}>
                 <View style={styles.addressHeader}>
-                    <Text style={styles.addressName}>{address.name}</Text>
-                    {address.isDefault && (
+                    <Text style={styles.addressName}>{`${address.title ?? ""}`}</Text>
+                    {address.is_default && (
                         <View style={styles.defaultBadge}>
                             <Text style={styles.defaultText}>Mặc định</Text>
                         </View>
                     )}
                 </View>
-                <Text style={styles.addressText}>{address.address}</Text>
-                <Text style={styles.phoneText}>{address.phone}</Text>
+                <Text style={styles.addressText}>{`${address.address ?? ""}`}</Text>
+                {/* Nếu có phone_number thì hiển thị */}
+                {address.phone_number && <Text style={styles.phoneText}>{`${address.phone_number}`}</Text>}
             </View>
         </TouchableOpacity>
     );
@@ -152,7 +137,27 @@ const CheckoutScreen = () => {
                         </TouchableOpacity>
                     </View>
 
-                    {addresses.map((address) => renderAddressOption(address))}
+                    {isLoading ? (
+                        <Text>Đang tải địa chỉ...</Text>
+                    ) : addresses && addresses.length > 0 ? (
+                        <>
+                            {(showAllAddresses ? addresses : addresses.slice(0, 2)).map((address) =>
+                                renderAddressOption(address),
+                            )}
+                            {addresses.length > 2 ? (
+                                <TouchableOpacity
+                                    onPress={() => setShowAllAddresses((prev) => !prev)}
+                                    style={{ marginTop: 8, alignSelf: "flex-start" }}
+                                >
+                                    <Text style={{ color: AppColors.primary, fontWeight: "500" }}>
+                                        {showAllAddresses ? "Thu gọn" : `Xem thêm (${addresses.length - 2})`}
+                                    </Text>
+                                </TouchableOpacity>
+                            ) : null}
+                        </>
+                    ) : (
+                        <Text style={{ color: "#888", fontStyle: "italic", marginTop: 8 }}>Chưa có địa chỉ nào</Text>
+                    )}
                 </View>
 
                 {/* Order Items */}
@@ -193,25 +198,14 @@ const CheckoutScreen = () => {
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                        style={[styles.paymentOption, paymentMethod === "card" && styles.selectedPaymentOption]}
-                        onPress={() => setPaymentMethod("card")}
+                        style={[styles.paymentOption, paymentMethod === "vnpay" && styles.selectedPaymentOption]}
+                        onPress={() => setPaymentMethod("vnpay")}
                     >
                         <View style={styles.radioButton}>
-                            {paymentMethod === "card" && <View style={styles.radioButtonSelected} />}
+                            {paymentMethod === "vnpay" && <View style={styles.radioButtonSelected} />}
                         </View>
-                        <MaterialIcons name="credit-card" size={24} color="#333" />
-                        <Text style={styles.paymentText}>Thẻ tín dụng</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.paymentOption, paymentMethod === "momo" && styles.selectedPaymentOption]}
-                        onPress={() => setPaymentMethod("momo")}
-                    >
-                        <View style={styles.radioButton}>
-                            {paymentMethod === "momo" && <View style={styles.radioButtonSelected} />}
-                        </View>
-                        <MaterialIcons name="account-balance-wallet" size={24} color="#333" />
-                        <Text style={styles.paymentText}>Ví MoMo</Text>
+                        <MaterialIcons name="qr-code" size={24} color="#333" />
+                        <Text style={styles.paymentText}>Chuyển khoản</Text>
                     </TouchableOpacity>
                 </View>
 

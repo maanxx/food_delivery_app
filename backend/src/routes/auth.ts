@@ -29,14 +29,14 @@ router.post(
     AuthController.forgotPassword,
 );
 
+router.post("/google-signin", AuthController.googleSignIn);
+
 // Protected routes (require authentication)
 router.get("/profile", AuthMiddleware.authenticate, AuthController.getProfile);
 
 router.put(
     "/profile",
     AuthMiddleware.authenticate,
-    ValidationRules.updateProfile,
-    ValidationMiddleware.handleValidationErrors,
     AuthController.updateProfile,
 );
 
@@ -44,7 +44,6 @@ router.post(
     "/change-password",
     AuthMiddleware.authenticate,
     ValidationRules.changePassword,
-    ValidationMiddleware.handleValidationErrors,
     AuthController.changePassword,
 );
 
