@@ -7,6 +7,7 @@ export class InvoiceController {
         try {
             const { user_id } = req.params;
             const invoices = await InvoiceModel.findByUser(user_id);
+            console.log("Invoices: ", invoices);
             return ResponseUtils.success(res, "Lấy danh sách hóa đơn thành công", invoices);
         } catch (err) {
             return ResponseUtils.error(res, err.message || "Lỗi server", 500);
@@ -16,14 +17,19 @@ export class InvoiceController {
     // Tạo hóa đơn mới
     static async createInvoice(req, res) {
         try {
-            const { user_id, items, total, address, payment_method } = req.body;
-            const invoice_id = await InvoiceModel.create({ user_id, items, total, address, payment_method });
+            const { user_id, items, total, payment_method } = req.body;
+            console.log("Received createInvoice params:", { user_id, items, total, payment_method });
+            if (!user_id) {
+                return ResponseUtils.error(res, "Thiếu user_id (employee_id)", 400);
+            }
+            const invoice_id = await InvoiceModel.create({ user_id, items, total, payment_method });
             if (invoice_id) {
                 return ResponseUtils.success(res, "Tạo hóa đơn thành công", { invoice_id });
             } else {
-                return ResponseUtils.error(res, "Không thể tạo hóa đơn", 400);
+                return ResponseUtils.error(res, "Không thể tạo hóa đơn (không tìm thấy customer_id)", 400);
             }
         } catch (err) {
+            console.error("Invoice create error:", err);
             return ResponseUtils.error(res, err.message || "Lỗi server", 500);
         }
     }

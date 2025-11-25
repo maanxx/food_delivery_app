@@ -5,6 +5,8 @@ import reviewRoutes from "./review";
 import addressRoutes from "./address";
 import vnpayRoutes from "./vnpay";
 import favoriteRoutes from "./favorite";
+import invoiceRoutes from "./invoice";
+import invoiceItemsRoutes from "./invoiceItems";
 
 const routes = (app: Application) => {
     /* GET */
@@ -30,9 +32,10 @@ const routes = (app: Application) => {
     // Favorite Dishes routes
     app.use("/api/favorite", favoriteRoutes);
 
-    /* POST */
-    /* PUT */
-    /* DELETE */
+    // Invoice routes
+    app.use("/api/invoice", invoiceRoutes);
+    // Invoice Items routes
+    app.use("/api/invoice-items", invoiceItemsRoutes);
 };
 
 export default routes;

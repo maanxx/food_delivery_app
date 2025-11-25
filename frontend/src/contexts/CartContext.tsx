@@ -166,8 +166,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         dispatch({ type: "UPDATE_QUANTITY", payload: { id, quantity } });
     }, []);
 
-    const clearCart = useCallback(() => {
+    const clearCart = useCallback(async () => {
         dispatch({ type: "CLEAR_CART" });
+        await AsyncStorage.removeItem("cart");
     }, []);
 
     // Save cart whenever items change

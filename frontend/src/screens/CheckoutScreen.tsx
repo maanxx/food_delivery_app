@@ -4,12 +4,14 @@ import React, { useState } from "react";
 import { Image, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { AppColors } from "../assets/styles/AppColor";
 import { CartItem, useCart } from "../contexts/CartContext";
+import { useAuth } from "../contexts/AuthContext";
 import { useAddress } from "../contexts/AddressContext";
 
 const CheckoutScreen = () => {
     const [showAllAddresses, setShowAllAddresses] = useState(false);
     const router = useRouter();
     const { state, clearCart } = useCart();
+    const { user } = useAuth();
     const cartItems = state.items;
     const cartTotal = state.total;
 
@@ -30,44 +32,55 @@ const CheckoutScreen = () => {
     const total = subtotal + deliveryFee;
 
     const handlePlaceOrder = async () => {
-        if (paymentMethod === "vnpay") {
-            router.push({
-                pathname: "/payment",
-                params: {
-                    total: total.toString(),
-                    address: selectedAddress?.address || "",
-                    note,
-                },
-            });
-            return;
-        }
-
         setIsPlacingOrder(true);
-
-        // Simulate API call
-        setTimeout(() => {
-            setIsPlacingOrder(false);
-
-            // Clear cart after successful order
-            clearCart();
-
-            // Generate order data
-            const orderNumber = `ORD-${Date.now()}`;
-            const estimatedTime = "30-45 phút";
-            const paymentMethodText = "Tiền mặt";
-
-            // Navigate to OrderSuccess with parameters
-            router.replace({
-                pathname: "/order-success",
-                params: {
-                    orderNumber,
-                    total: total.toString(),
-                    estimatedTime,
-                    paymentMethod: paymentMethodText,
-                    address: selectedAddress.address,
-                },
+        try {
+            const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/invoice/create`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    user_id: user?.user_id,
+                    items: cartItems,
+                    total,
+                    address: selectedAddress?.address || "",
+                    payment_method: paymentMethod,
+                }),
             });
-        }, 2000);
+            const result = await res.json();
+            if (result && result.data?.invoice_id) {
+                await clearCart();
+                const orderNumber = result.data.invoice_id;
+                const estimatedTime = "30-45 phút";
+                const paymentMethodText = paymentMethod === "cash" ? "Tiền mặt" : paymentMethod;
+                if (paymentMethod === "vnpay") {
+                    router.push({
+                        pathname: "/payment",
+                        params: {
+                            orderNumber,
+                            total: total.toString(),
+                            address: selectedAddress?.address || "",
+                            note,
+                        },
+                    });
+                } else {
+                    router.replace({
+                        pathname: "/order-success",
+                        params: {
+                            orderNumber,
+                            total: total.toString(),
+                            estimatedTime,
+                            paymentMethod: paymentMethodText,
+                            address: selectedAddress?.address || "",
+                        },
+                    });
+                }
+            } else {
+                alert(result.error || "Không thể tạo hóa đơn");
+            }
+        } catch (err) {
+            alert("Lỗi kết nối. Vui lòng thử lại.");
+        } finally {
+            setIsPlacingOrder(false);
+        }
     };
 
     const renderCartItem = (item: CartItem) => (
@@ -109,7 +122,6 @@ const CheckoutScreen = () => {
                     )}
                 </View>
                 <Text style={styles.addressText}>{`${address.address ?? ""}`}</Text>
-                {/* Nếu có phone_number thì hiển thị */}
                 {address.phone_number && <Text style={styles.phoneText}>{`${address.phone_number}`}</Text>}
             </View>
         </TouchableOpacity>
@@ -139,7 +151,7 @@ const CheckoutScreen = () => {
 
                     {isLoading ? (
                         <Text>Đang tải địa chỉ...</Text>
-                    ) : addresses && addresses.length > 0 ? (
+                    ) : Array.isArray(addresses) && addresses.length > 0 ? (
                         <>
                             {(showAllAddresses ? addresses : addresses.slice(0, 2)).map((address) =>
                                 renderAddressOption(address),
