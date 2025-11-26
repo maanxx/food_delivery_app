@@ -1,6 +1,6 @@
 // API Configuration
-export const API_CONFIG = {
-    BASE_URL: process.env.EXPO_PUBLIC_API_URL || "http://192.168.3.3:5678",
+const API_CONFIG = {
+    BASE_URL: process.env.EXPO_PUBLIC_BACKEND_URL || "http://localhost:3000",
     ENDPOINTS: {
         AUTH: {
             REGISTER: "/api/auth/register",
@@ -12,7 +12,7 @@ export const API_CONFIG = {
             CHANGE_PASSWORD: "/api/auth/change-password",
         },
     },
-    TIMEOUT: 10000, // 10 seconds
+    TIMEOUT: 20000, // 20 seconds
 };
 
 export default API_CONFIG;

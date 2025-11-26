@@ -6,9 +6,6 @@ const router = Router();
 // Categories routes
 router.get("/categories", FoodController.getCategories);
 
-// Restaurants routes
-router.get("/restaurants", FoodController.getRestaurants);
-
 // Foods routes
 router.get("/foods", FoodController.getAllFoods);
 router.get("/foods/featured", FoodController.getFeaturedFoods);

@@ -133,4 +133,9 @@ export class AuthMiddleware {
     }
 }
 
+// Export both class and shorthand function
 export default AuthMiddleware;
+export const authMiddleware = AuthMiddleware.authenticate.bind(AuthMiddleware);
+export const optionalAuthMiddleware = AuthMiddleware.optionalAuth.bind(AuthMiddleware);
+export const adminMiddleware = AuthMiddleware.adminOnly.bind(AuthMiddleware);
+export const customerMiddleware = AuthMiddleware.customerOnly.bind(AuthMiddleware);

@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from "react";
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useReducer, useState } from "react";
 import { foodApiClient } from "../services/foodApi";
-import { FoodWithDetails, Category, Restaurant } from "../types/food";
+import { Category, FoodWithDetails, Restaurant } from "../types/food";
 
 interface FoodState {
     foods: FoodWithDetails[];
@@ -102,7 +102,17 @@ const foodReducer = (state: FoodState, action: FoodAction): FoodState => {
     }
 };
 
-const FoodContext = createContext<FoodContextType | undefined>(undefined);
+const FoodContext = createContext<FoodContextType>({
+    foods: [],
+    categories: [],
+    featuredFoods: [],
+    popularFoods: [],
+    isLoading: false,
+    error: null,
+    loadAllFoods: () => {},
+    clearError: () => {},
+    refreshAllData: () => Promise.resolve(),
+});
 
 interface FoodProviderProps {
     children: ReactNode;
@@ -110,6 +120,7 @@ interface FoodProviderProps {
 
 export const FoodProvider: React.FC<FoodProviderProps> = ({ children }) => {
     const [state, dispatch] = useReducer(foodReducer, initialState);
+    const [foods, setFoods] = useState<FoodWithDetails[]>([]);
 
     const loadAllFoods = async (params?: { category_id?: string; search?: string }) => {
         try {

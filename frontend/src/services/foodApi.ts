@@ -9,6 +9,8 @@ class FoodApiClient {
     ): Promise<ApiResponse<T>> {
         try {
             const url = `${API_CONFIG.BASE_URL}${endpoint}`;
+            // Kiểm tra log này khi chạy app:
+            console.log("Food API Request:", url, method);
 
             const options: RequestInit = {
                 method,
@@ -21,13 +23,9 @@ class FoodApiClient {
                 options.body = JSON.stringify(data);
             }
 
-            console.log("Food API Request:", url, method);
-
             const response = await fetch(url, options);
-            console.log("Food API Response Status:", response.status, response.statusText);
-
             const responseText = await response.text();
-            console.log("Food API Response Text:", responseText);
+            // console.log("Food API Response Text:", responseText);
 
             let result;
             try {
@@ -55,7 +53,6 @@ class FoodApiClient {
     // Lấy danh sách tất cả món ăn
     async getAllFoods(params?: {
         category_id?: string;
-        restaurant_id?: string;
         search?: string;
         page?: number;
         limit?: number;

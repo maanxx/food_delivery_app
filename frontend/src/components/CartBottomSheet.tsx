@@ -1,8 +1,8 @@
-import { AntDesign, MaterialIcons, Feather } from "@expo/vector-icons";
-import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, Alert } from "react-native";
-import Modal from "react-native-modal";
+import { AntDesign, Feather, MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import { Alert, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Modal from "react-native-modal";
 import { AppColors } from "../assets/styles/AppColor";
 import { useCart } from "../contexts/CartContext";
 
@@ -16,6 +16,7 @@ const CartBottomSheet: React.FC<CartBottomSheetProps> = ({ visible, onClose }) =
     const { state, updateQuantity, removeItem, clearCart, formatPrice } = useCart();
     const { items, total, itemCount } = state;
     const [showSummary, setShowSummary] = useState(false);
+
 
     const deliveryFee = 20000;
     const finalTotal = total + deliveryFee;
@@ -50,43 +51,46 @@ const CartBottomSheet: React.FC<CartBottomSheetProps> = ({ visible, onClose }) =
         router.push("/checkout");
     };
 
-    const renderCartItem = ({ item }: { item: (typeof items)[0] }) => (
-        <View style={styles.itemContainer}>
-            <Image source={{ uri: item.image_url || "https://via.placeholder.com/60" }} style={styles.itemImage} />
+    const renderCartItem = ({ item }: { item: (typeof items)[0] }) => {
+        const imageUri = (item as any).image_url || (item as any).thumbnail_path || "https://via.placeholder.com/60";
+        return (
+            <View style={styles.itemContainer}>
+                <Image source={{ uri: imageUri }} style={styles.itemImage} />
 
-            <View style={styles.itemInfo}>
-                <Text style={styles.itemName} numberOfLines={2}>
-                    {item.name}
-                </Text>
-                <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
-                {item.note && <Text style={styles.itemNote}>Ghi chú: {item.note}</Text>}
-            </View>
+                <View style={styles.itemInfo}>
+                    <Text style={styles.itemName} numberOfLines={2}>
+                        {item.name}
+                    </Text>
+                    <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
+                    {item.note && <Text style={styles.itemNote}>Ghi chú: {item.note}</Text>}
+                </View>
 
-            <View style={styles.quantityContainer}>
-                <TouchableOpacity
-                    style={[styles.quantityButton, item.quantity <= 1 && styles.disabledButton]}
-                    disabled={item.quantity <= 1}
-                    onPress={() => updateQuantity(item.id, item.quantity - 1)}
-                >
-                    <AntDesign name="minus" size={12} color="#fff" />
+                <View style={styles.quantityContainer}>
+                    <TouchableOpacity
+                        style={[styles.quantityButton, item.quantity <= 1 && styles.disabledButton]}
+                        disabled={item.quantity <= 1}
+                        onPress={() => updateQuantity(item.id, item.quantity - 1)}
+                    >
+                        <AntDesign name="minus" size={12} color="#fff" />
+                    </TouchableOpacity>
+
+                    <Text style={styles.quantityText}>{item.quantity}</Text>
+
+                    <TouchableOpacity
+                        style={[styles.quantityButton, item.quantity >= 99 && styles.disabledButton]}
+                        disabled={item.quantity >= 99}
+                        onPress={() => updateQuantity(item.id, item.quantity + 1)}
+                    >
+                        <AntDesign name="plus" size={12} color="#fff" />
+                    </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity style={styles.deleteButton} onPress={() => handleRemoveItem(item.id, item.name)}>
+                    <MaterialIcons name="delete-outline" size={20} color="#FF6B6B" />
                 </TouchableOpacity>
-
-                <Text style={styles.quantityText}>{item.quantity}</Text>
-
-                <TouchableOpacity
-                    style={[styles.quantityButton, item.quantity >= 99 && styles.disabledButton]}
-                    disabled={item.quantity >= 99}
-                    onPress={() => updateQuantity(item.id, item.quantity + 1)}
-                >
-                    <AntDesign name="plus" size={12} color="#fff" />
-                </TouchableOpacity>
             </View>
-
-            <TouchableOpacity style={styles.deleteButton} onPress={() => handleRemoveItem(item.id, item.name)}>
-                <MaterialIcons name="delete-outline" size={20} color="#FF6B6B" />
-            </TouchableOpacity>
-        </View>
-    );
+        );
+    };
 
     const renderEmptyCart = () => (
         <View style={styles.emptyContainer}>

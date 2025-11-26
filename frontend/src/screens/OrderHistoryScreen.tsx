@@ -13,6 +13,7 @@ import {
     Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useAuth } from "../contexts/AuthContext";
 import { MaterialIcons } from "@expo/vector-icons";
 import { AppColors } from "../assets/styles/AppColor";
 interface OrderItem {
@@ -47,121 +48,59 @@ const OrderHistoryScreen = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [selectedTab, setSelectedTab] = useState<"all" | "active" | "completed">("all");
 
-    const mockOrders: Order[] = [
-        {
-            id: "1",
-            order_number: "ORD-2024-001",
-            status: "delivering",
-            items: [
-                {
-                    id: "1",
-                    name: "Whopper Burger",
-                    price: 85000,
-                    quantity: 2,
-                    image_url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=400&h=300&fit=crop",
-                },
-                {
-                    id: "2",
-                    name: "Khoai tây chiên",
-                    price: 35000,
-                    quantity: 1,
-                    image_url: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&h=300&fit=crop",
-                },
-            ],
-            total_amount: 205000,
-            delivery_fee: 20000,
-            restaurant_name: "Burger King",
-            delivery_address: "123 Nguyễn Huệ, Q.1, TP.HCM",
-            payment_method: "Tiền mặt",
-            order_date: "2024-11-01T14:30:00Z",
-            estimated_delivery: "2024-11-01T15:00:00Z",
-            note: "Không cay",
-        },
-        {
-            id: "2",
-            order_number: "ORD-2024-002",
-            status: "delivered",
-            items: [
-                {
-                    id: "3",
-                    name: "Pizza Margherita",
-                    price: 120000,
-                    quantity: 1,
-                    image_url: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&h=300&fit=crop",
-                },
-            ],
-            total_amount: 140000,
-            delivery_fee: 20000,
-            restaurant_name: "Pizza Hut",
-            delivery_address: "456 Lê Lợi, Q.3, TP.HCM",
-            payment_method: "Ví MoMo",
-            order_date: "2024-10-31T19:15:00Z",
-            estimated_delivery: "2024-10-31T20:00:00Z",
-            delivery_time: "2024-10-31T19:55:00Z",
-        },
-        {
-            id: "3",
-            order_number: "ORD-2024-003",
-            status: "cancelled",
-            items: [
-                {
-                    id: "4",
-                    name: "Pizza Pepperoni",
-                    price: 145000,
-                    quantity: 1,
-                    image_url: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=300&fit=crop",
-                },
-                {
-                    id: "5",
-                    name: "Coca Cola",
-                    price: 25000,
-                    quantity: 2,
-                    image_url: "https://images.unsplash.com/photo-1554866585-cd94860890b7?w=400&h=300&fit=crop",
-                },
-            ],
-            total_amount: 195000,
-            delivery_fee: 20000,
-            restaurant_name: "Pizza Hut",
-            delivery_address: "789 Trần Hưng Đạo, Q.5, TP.HCM",
-            payment_method: "Thẻ tín dụng",
-            order_date: "2024-10-30T12:00:00Z",
-            estimated_delivery: "2024-10-30T12:45:00Z",
-            note: "Hủy do thay đổi kế hoạch",
-        },
-        {
-            id: "4",
-            order_number: "ORD-2024-004",
-            status: "delivered",
-            items: [
-                {
-                    id: "6",
-                    name: "Cheeseburger Deluxe",
-                    price: 95000,
-                    quantity: 1,
-                    image_url: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=400&h=300&fit=crop",
-                },
-            ],
-            total_amount: 115000,
-            delivery_fee: 20000,
-            restaurant_name: "Burger King",
-            delivery_address: "123 Nguyễn Huệ, Q.1, TP.HCM",
-            payment_method: "Tiền mặt",
-            order_date: "2024-10-29T18:30:00Z",
-            estimated_delivery: "2024-10-29T19:15:00Z",
-            delivery_time: "2024-10-29T19:10:00Z",
-        },
-    ];
+    // ...existing code...
 
     useEffect(() => {
         loadOrders();
     }, []);
 
+    const { user } = useAuth();
     const loadOrders = async () => {
         setLoading(true);
         try {
-            // Simulate API call
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            setOrders(mockOrders);
+            const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/invoice/${user?.user_id}`);
+            const text = await res.text();
+            let apiData = null;
+            try {
+                apiData = JSON.parse(text);
+            } catch (err) {
+                console.error("API trả về không phải JSON:", text);
+                setOrders([]);
+                return;
+            }
+            const data = Array.isArray(apiData) ? apiData : apiData.data || [];
+            // Fetch items for each invoice
+            const mapped = await Promise.all(
+                data.map(async (item: any) => {
+                    let items = [];
+                    try {
+                        const itemsRes = await fetch(
+                            `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/invoice-items/${item.invoice_id}/items`,
+                        );
+                        const itemsJson = await itemsRes.json();
+                        items = Array.isArray(itemsJson.data) ? itemsJson.data : [];
+                    } catch (err) {
+                        items = [];
+                    }
+                    return {
+                        id: item.invoice_id,
+                        order_number: item.invoice_id,
+                        status: item.status || "pending",
+                        items,
+                        total_amount: item.total_amount,
+                        delivery_fee: item.delivery_fee || 0,
+                        restaurant_name: item.restaurant_name || "",
+                        restaurant_image: item.restaurant_image || "",
+                        delivery_address: item.address,
+                        payment_method: item.payment_method,
+                        order_date: item.created_at,
+                        estimated_delivery: item.estimated_delivery || "",
+                        delivery_time: item.delivery_time || "",
+                        note: item.note || "",
+                    };
+                }),
+            );
+            setOrders(mapped);
         } catch (error) {
             console.error("Load orders error:", error);
         } finally {
@@ -243,11 +182,14 @@ const OrderHistoryScreen = () => {
         router.push(`/order-tracking?orderId=${order.id}`);
     };
 
-    const renderOrderItem = (item: OrderItem, isLast: boolean) => (
-        <View key={item.id} style={[styles.orderItem, !isLast && styles.orderItemBorder]}>
-            <Image source={{ uri: item.image_url }} style={styles.itemImage} />
+    const renderOrderItem = (item: OrderItem, isLast: boolean, index: number) => (
+        <View key={item.id || index} style={[styles.orderItem, !isLast && styles.orderItemBorder]}>
+            <Image
+                source={{ uri: item.thumbnail_path || item.image_url || "https://via.placeholder.com/50" }}
+                style={styles.itemImage}
+            />
             <View style={styles.itemInfo}>
-                <Text style={styles.itemName}>{item.name}</Text>
+                <Text style={styles.itemName}>{item.dish_name || item.name}</Text>
                 <Text style={styles.itemPrice}>
                     {formatPrice(item.price)} x {item.quantity}
                 </Text>
@@ -257,16 +199,15 @@ const OrderHistoryScreen = () => {
     );
 
     const renderOrder = ({ item: order }: { item: Order }) => {
-        const statusInfo = getStatusInfo(order.status);
+        const statusInfo = getStatusInfo("pending");
 
         return (
             <TouchableOpacity style={styles.orderCard} onPress={() => handleOrderPress(order)} activeOpacity={0.8}>
                 {/* Order Header */}
                 <View style={styles.orderHeader}>
-                    <View style={styles.orderHeaderLeft}>
+                    {/* <View style={styles.orderHeaderLeft}>
                         <Text style={styles.orderNumber}>{order.order_number}</Text>
-                        <Text style={styles.restaurantName}>📍 {order.restaurant_name}</Text>
-                    </View>
+                    </View> */}
                     <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
                         <MaterialIcons
                             name={statusInfo.icon as keyof typeof MaterialIcons.glyphMap}
@@ -279,18 +220,20 @@ const OrderHistoryScreen = () => {
 
                 {/* Order Items */}
                 <View style={styles.orderItems}>
-                    {order.items.map((item, index) => renderOrderItem(item, index === order.items.length - 1))}
+                    {order.items.map((item, index) => renderOrderItem(item, index === order.items.length - 1, index))}
                 </View>
 
                 {/* Order Summary */}
                 <View style={styles.orderSummary}>
                     <View style={styles.summaryRow}>
                         <Text style={styles.summaryLabel}>Tổng tiền:</Text>
-                        <Text style={styles.summaryValue}>{formatPrice(order.total_amount)}</Text>
+                        <Text style={styles.summaryValue}>{formatPrice(Number(order.total_amount))}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                         <Text style={styles.summaryLabel}>Thanh toán:</Text>
-                        <Text style={styles.summaryValue}>{order.payment_method}</Text>
+                        <Text style={styles.summaryValue}>
+                            {order.payment_method === "Cash" ? "Tiền mặt" : "Chuyển khoản"}
+                        </Text>
                     </View>
                     <View style={styles.summaryRow}>
                         <Text style={styles.summaryLabel}>Đặt lúc:</Text>
@@ -314,10 +257,10 @@ const OrderHistoryScreen = () => {
                         </TouchableOpacity>
                     )}
 
-                    <TouchableOpacity style={styles.actionButton} onPress={() => handleOrderPress(order)}>
+                    {/* <TouchableOpacity style={styles.actionButton} onPress={() => handleOrderPress(order)}>
                         <MaterialIcons name="info" size={16} color={AppColors.primary} />
                         <Text style={styles.actionButtonText}>Chi tiết</Text>
-                    </TouchableOpacity>
+                    </TouchableOpacity> */}
                 </View>
             </TouchableOpacity>
         );

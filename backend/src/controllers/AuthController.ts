@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { UserModel } from "../models/User";
 import { JWTUtils, TokenPayload } from "../utils/jwt";
 import ResponseUtils from "../utils/response";
+import { OAuth2Client } from "google-auth-library"; // <-- added
 
 interface UserRequest extends Request {
     user?: TokenPayload;
@@ -81,6 +82,8 @@ export class AuthController {
     static async login(req: Request, res: Response): Promise<void> {
         try {
             const { email, password } = req.body;
+
+            console.log("Email :" + email + "Password: " + password);
 
             // Find user by email
             const user = await UserModel.findByEmail(email);
@@ -183,12 +186,27 @@ export class AuthController {
     // Update user profile
     static async updateProfile(req: UserRequest, res: Response): Promise<void> {
         try {
+            console.log("req.userId: ", req.userId);
+
             if (!req.userId) {
                 ResponseUtils.unauthorized(res, "User không được xác thực");
                 return;
             }
 
-            const { fullname, address, gender, date_of_birth, phone_number } = req.body;
+            const { fullname, address, gender, date_of_birth, phone_number, avatar_path } = req.body;
+
+            // Chuyển đổi date_of_birth về yyyy-MM-dd nếu có
+            let formattedDob = date_of_birth;
+            if (date_of_birth) {
+                try {
+                    const d = new Date(date_of_birth);
+                    if (!isNaN(d.getTime())) {
+                        formattedDob = d.toISOString().slice(0, 10);
+                    }
+                } catch (e) {
+                    // Nếu lỗi, giữ nguyên giá trị cũ
+                }
+            }
 
             // Check if phone number is being changed and already exists
             if (phone_number) {
@@ -200,12 +218,14 @@ export class AuthController {
             }
 
             // Update user
+
             const updateData: Record<string, unknown> = {};
             if (fullname !== undefined) updateData.fullname = fullname;
-            if (address !== undefined) updateData.address = address;
+            // if (address !== undefined) updateData.address = address;
             if (gender !== undefined) updateData.gender = gender;
-            if (date_of_birth !== undefined) updateData.date_of_birth = date_of_birth;
+            if (date_of_birth !== undefined) updateData.date_of_birth = formattedDob;
             if (phone_number !== undefined) updateData.phone_number = phone_number;
+            if (avatar_path !== undefined) updateData.avatar_path = avatar_path;
 
             const updated = await UserModel.update(req.userId, updateData);
             if (!updated) {
@@ -231,9 +251,7 @@ export class AuthController {
             console.error("Update profile error:", error);
             ResponseUtils.error(res, "Lỗi server khi cập nhật profile");
         }
-    }
-
-    // Change password
+    } // Change password
     static async changePassword(req: UserRequest, res: Response): Promise<void> {
         try {
             if (!req.userId) {
@@ -304,6 +322,96 @@ export class AuthController {
         } catch (error) {
             console.error("Forgot password error:", error);
             ResponseUtils.error(res, "Lỗi server khi xử lý yêu cầu quên mật khẩu");
+        }
+    }
+
+    // Sign in / register with Google idToken
+    static async googleSignIn(req: Request, res: Response): Promise<void> {
+        try {
+            const { idToken } = req.body;
+            if (!idToken) {
+                ResponseUtils.badRequest(res, "Missing idToken");
+                return;
+            }
+
+            const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+            if (!GOOGLE_CLIENT_ID) {
+                console.error("Missing GOOGLE_CLIENT_ID env");
+                ResponseUtils.error(res, "Server config error");
+                return;
+            }
+
+            const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+            const ticket = await client.verifyIdToken({
+                idToken,
+                audience: GOOGLE_CLIENT_ID,
+            });
+            const payload = ticket.getPayload();
+            if (!payload) {
+                ResponseUtils.unauthorized(res, "Invalid Google idToken");
+                return;
+            }
+
+            const googleId = payload.sub;
+            const email = payload.email || "";
+            const fullname = payload.name || "";
+            const picture = payload.picture || "";
+
+            // Find existing user by email
+            let user = await UserModel.findByEmail(email);
+
+            if (user) {
+                // Update user to mark google login (optional fields)
+                await UserModel.update(user.user_id, {
+                    fullname,
+                    avatar: picture,
+                    type_login: "Google",
+                    google_id: googleId,
+                });
+            } else {
+                // Create new user (password empty, type_login Google)
+                const newUserId = await UserModel.create({
+                    fullname,
+                    email,
+                    phone_number: null,
+                    password: "", // no password for social account
+                    country_code: "+84",
+                    type_login: "Google",
+                    role: "Customer",
+                    google_id: googleId,
+                    avatar: picture,
+                });
+                user = await UserModel.findById(newUserId);
+            }
+
+            if (!user) {
+                ResponseUtils.error(res, "Không thể tạo hoặc lấy thông tin user");
+                return;
+            }
+
+            // Generate tokens
+            const tokenPayload: TokenPayload = {
+                userId: user.user_id,
+                email: user.email,
+                role: user.role,
+            };
+            const tokens = JWTUtils.generateTokenPair(tokenPayload);
+
+            // Update last login
+            await UserModel.updateLastLogin(user.user_id);
+
+            // Remove password from response
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { password: _, ...userWithoutPassword } = user;
+
+            ResponseUtils.success(res, "Đăng nhập bằng Google thành công", {
+                user: userWithoutPassword,
+                tokens,
+            });
+        } catch (error) {
+            console.error("Google sign-in error:", error);
+            ResponseUtils.unauthorized(res, "Google idToken không hợp lệ hoặc lỗi server");
         }
     }
 }

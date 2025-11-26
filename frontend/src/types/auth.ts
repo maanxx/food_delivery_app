@@ -10,6 +10,7 @@ export interface User {
     country_code: string;
     role: "Admin" | "Customer" | "Owner" | "Employee";
     avatar_path?: string;
+    avatar?: string; // For Google avatar
     payment_method?: "Credit Card" | "Momo" | "Zalo Pay" | "Bank Transfer" | "Cash";
     created_at?: string;
     updated_at?: string;
@@ -73,4 +74,5 @@ export interface UpdateProfileData {
     gender?: "Male" | "Female" | "Other";
     date_of_birth?: string;
     phone_number?: string;
+    avatar_path?: string;
 }

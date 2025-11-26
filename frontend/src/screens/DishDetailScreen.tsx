@@ -1,143 +1,270 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Image, TextInput } from "react-native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
-import { AppColors } from "../assets/styles/AppColor";
-import { AntDesign, Entypo, FontAwesome } from "@expo/vector-icons";
-import { formatCurrency } from "../utils/MoneyUtil";
+import React, { useState, useEffect } from "react";
+import {
+    View,
+    Text,
+    StyleSheet,
+    ScrollView,
+    Image,
+    TouchableOpacity,
+    SafeAreaView,
+    Dimensions,
+    Pressable,
+} from "react-native";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { Feather, AntDesign, MaterialIcons } from "@expo/vector-icons";
+import { AppColors } from "../src/assets/styles/AppColor";
+import { FoodWithDetails } from "../src/types/food";
+import { foodApiClient } from "../src/services/foodApi";
+import { useCart } from "../src/contexts/CartContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-type RootStackParamList = {
-    DishDetail: undefined;
-    OrderSuccess: undefined;
-};
+const { width } = Dimensions.get("window");
 
-type DishDetailScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, "DishDetail">;
+const DishDetailScreen = () => {
+    const router = useRouter();
+    const { foodId } = useLocalSearchParams<{ foodId: string }>();
+    const { addItem } = useCart();
 
-const DishDetailScreen: React.FC = () => {
-    const navigation = useNavigation<DishDetailScreenNavigationProp>();
-    const [quantity, setQuantity] = useState<number>(1);
-    const [currPrice] = useState<number>(50000);
+    const [food, setFood] = useState<FoodWithDetails | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [quantity, setQuantity] = useState(1);
+    const [selectedSize, setSelectedSize] = useState("Vừa");
+    const [error, setError] = useState<string | null>(null);
+    const [isFav, setIsFav] = useState(false);
 
-    const handleAddToCart = () => {
-        navigation.goBack();
+    const sizes = ["Nhỏ", "Vừa", "Lớn"];
+    const FAVORITES_KEY = "favorites_v1";
+
+    useEffect(() => {
+        loadFoodDetail();
+    }, [foodId]);
+
+    useEffect(() => {
+        const loadFav = async () => {
+            try {
+                const raw = await AsyncStorage.getItem(FAVORITES_KEY);
+                if (!raw) return;
+                const arr = JSON.parse(raw);
+                if (Array.isArray(arr) && foodId) setIsFav(arr.includes(foodId));
+            } catch (err) {
+                console.warn("loadFav error", err);
+            }
+        };
+        loadFav();
+    }, [foodId]);
+
+    const loadFoodDetail = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            if (!foodId) {
+                setError("Không tìm thấy món ăn");
+                return;
+            }
+
+            const response = await foodApiClient.getFoodById(foodId);
+
+            if (response.success && response.data) {
+                setFood(response.data);
+            } else {
+                setError(response.message || "Không thể tải thông tin món ăn");
+            }
+        } catch (error) {
+            console.error("Load food detail error:", error);
+            setError("Lỗi kết nối. Vui lòng thử lại.");
+        } finally {
+            setLoading(false);
+        }
     };
 
+    const toggleFav = async () => {
+        try {
+            const raw = await AsyncStorage.getItem(FAVORITES_KEY);
+            const arr = Array.isArray(raw ? JSON.parse(raw) : null) ? JSON.parse(raw!) : [];
+            const set = new Set(arr);
+            if (foodId) {
+                if (set.has(foodId)) {
+                    set.delete(foodId);
+                    setIsFav(false);
+                } else {
+                    set.add(foodId);
+                    setIsFav(true);
+                }
+                await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(set)));
+            }
+        } catch (err) {
+            console.warn("toggleFav error", err);
+        }
+    };
 
+    const formatPrice = (price: number) => {
+        return new Intl.NumberFormat("vi-VN").format(price) + "đ";
+    };
+
+    const getTotalPrice = () => {
+        if (!food) return 0;
+        const basePrice = food.price;
+        const sizeMultiplier = selectedSize === "Nhỏ" ? 0.8 : selectedSize === "Lớn" ? 1.2 : 1;
+        return basePrice * sizeMultiplier * quantity;
+    };
+
+    const handleAddToCart = () => {
+        if (!food) return;
+
+        // compute unit price according to selected size
+        const sizeMultiplier = selectedSize === "Nhỏ" ? 0.8 : selectedSize === "Lớn" ? 1.2 : 1;
+        const unitPrice = Math.round(food.price * sizeMultiplier);
+
+        // Ensure we use a consistent id field (fallback to foodId)
+        const itemId = (food as any).id || (food as any).dish_id || foodId || String(Date.now());
+
+        addItem({
+            id: itemId,
+            name: food.name,
+            price: unitPrice,
+            image_url: (food as any).image_url || "",
+            quantity,
+            size: selectedSize,
+        } as any);
+
+        console.log("Added to cart:", { id: itemId, name: food.name, unitPrice, quantity, size: selectedSize });
+        router.back();
+    };
+
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>Đang tải...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (error || !food) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error || "Không tìm thấy món ăn"}</Text>
+                    <TouchableOpacity style={styles.retryButton} onPress={loadFoodDetail}>
+                        <Text style={styles.retryText}>Thử lại</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView style={styles.scrollView}>
-                {/* Food Image */}
+            {/* Header */}
+            <View style={styles.header}>
+                <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                    <Feather name="arrow-left" size={24} color="#333" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Chi tiết món ăn</Text>
+                <Pressable style={styles.favoriteButton} onPress={toggleFav}>
+                    <Feather name="heart" size={24} color={isFav ? "#ff4d6d" : "#333"} />
+                </Pressable>
+            </View>
 
-                <View style={{ position: "relative" }}>
-                    <TouchableOpacity
-                        style={{ position: "absolute", top: 40, left: 16, zIndex: 99 }}
-                        onPress={() => navigation.goBack()}
-                    >
-                        <Entypo name="back" size={30} color="black" />
-                    </TouchableOpacity>
-                    <View style={styles.imageContainer}>
-                        <Image
-                            source={require("../assets/images/foods/2-mieng-b_-burger-b_-n_ng-whopper_3.jpg")} // Replace with your image
-                            style={styles.foodImage}
-                            resizeMode="cover"
-                        />
-                    </View>
+            <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+                {/* Food Image */}
+                <View style={styles.imageContainer}>
+                    {food.image_url ? (
+                        <Image source={{ uri: food.image_url }} style={styles.foodImage} />
+                    ) : (
+                        <View style={styles.noImageContainer}>
+                            <Text style={styles.noImageText}>🍔</Text>
+                        </View>
+                    )}
                 </View>
 
-                {/* Content */}
-                <View style={styles.content}>
-                    <View style={styles.header}>
-                        <View>
-                            <Text style={styles.title}>Burger phô mai Wendy’s</Text>
-                            <View style={styles.ratingContainer}>
-                                <FontAwesome name="cart-arrow-down" size={16} color="black" />
-                                <Text>{234} đã bán</Text>
-                                <Text> | </Text>
-                                <AntDesign name="star" size={16} color={AppColors.primary} />
-                                <Text style={styles.rating}>4.9</Text>
-                            </View>
+                {/* Food Info */}
+                <View style={styles.contentContainer}>
+                    <View style={styles.titleSection}>
+                        <Text style={styles.foodName}>{food.name}</Text>
+                        <View style={styles.ratingContainer}>
+                            <MaterialIcons name="star" size={20} color="#FFD700" />
+                            <Text style={styles.rating}>{food.rating.toFixed(1)}</Text>
+                            <Text style={styles.reviewCount}>({food.total_reviews} đánh giá)</Text>
                         </View>
-                        <View style={{ alignItems: "flex-end" }}>
-                            <Text style={styles.price}>{50000}đ</Text>
-                            <Text style={styles.discount}>{60000}đ</Text>
-                        </View>
+                    </View>
+
+                    {/* Price */}
+                    <View style={styles.priceSection}>
+                        <Text style={styles.currentPrice}>{formatPrice(getTotalPrice())}</Text>
+                        {food.discount_price && food.discount_price > food.price && (
+                            <Text style={styles.originalPrice}>{formatPrice(food.discount_price)}</Text>
+                        )}
                     </View>
 
                     {/* Description */}
-                    <Text style={styles.description}>
-                        Burger phô mai Wendy’s là món burger cổ điển đậm đà hương vị, với phần thịt bò nướng mọng nước,
-                        phô mai tan chảy béo ngậy, rau xà lách giòn, cà chua tươi và dưa chua hấp dẫn.
-                    </Text>
-
-                    {/* Note Section */}
-                    <View style={styles.noteSection}>
-                        <Text style={styles.noteTitle}>Ghi chú cho quán</Text>
-                        <TextInput
-                            style={styles.noteInput}
-                            placeholderTextColor={"#8f8f8f"}
-                            placeholder="Cho quán biết thêm về yêu cầu của bạn."
-                        />
+                    <View style={styles.descriptionSection}>
+                        <Text style={styles.sectionTitle}>Mô tả</Text>
+                        <Text style={styles.description}>{food.description}</Text>
                     </View>
 
-                    {/* Divider */}
-                    <View style={styles.divider} />
+                    {/* Size Selection */}
+                    <View style={styles.sizeSection}>
+                        <Text style={styles.sectionTitle}>Kích cỡ</Text>
+                        <View style={styles.sizeOptions}>
+                            {sizes.map((size) => (
+                                <TouchableOpacity
+                                    key={size}
+                                    style={[styles.sizeOption, selectedSize === size && styles.selectedSizeOption]}
+                                    onPress={() => setSelectedSize(size)}
+                                >
+                                    <Text style={[styles.sizeText, selectedSize === size && styles.selectedSizeText]}>
+                                        {size}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    {/* Quantity Selection */}
+                    <View style={styles.quantitySection}>
+                        <Text style={styles.sectionTitle}>Số lượng</Text>
+                        <View style={styles.quantityControls}>
+                            <TouchableOpacity
+                                style={styles.quantityButton}
+                                onPress={() => setQuantity(Math.max(1, quantity - 1))}
+                            >
+                                <AntDesign name="minus" size={18} color="#333" />
+                            </TouchableOpacity>
+                            <Text style={styles.quantityText}>{quantity}</Text>
+                            <TouchableOpacity style={styles.quantityButton} onPress={() => setQuantity(quantity + 1)}>
+                                <AntDesign name="plus" size={18} color="#333" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* Additional Info */}
+                    <View style={styles.additionalInfo}>
+                        <View style={styles.infoItem}>
+                            <MaterialIcons name="schedule" size={20} color="#666" />
+                            <Text style={styles.infoText}>Thời gian chuẩn bị: {food.prep_time} phút</Text>
+                        </View>
+
+                        {/* If delivery fee is available at top-level (or returned by API), show it.
+                            Use a safe access in case field doesn't exist. */}
+                        {(food as any).delivery_fee !== undefined && (
+                            <View style={styles.infoItem}>
+                                <MaterialIcons name="delivery-dining" size={20} color="#666" />
+                                <Text style={styles.infoText}>
+                                    Phí giao hàng: {formatPrice((food as any).delivery_fee)}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
                 </View>
             </ScrollView>
-            {/* Price and Order Button */}
-            <View style={styles.footer}>
-                <View
-                    style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        width: "85%",
-                        marginBottom: 10,
-                    }}
-                >
-                    <Text style={styles.price}>{formatCurrency(currPrice * quantity)}</Text>
-                    <View
-                        style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                        }}
-                    >
-                        <TouchableOpacity
-                            style={[styles.button, quantity <= 1 ? styles.disabledButton : {}]}
-                            disabled={quantity <= 1}
-                            onPress={() => {
-                                setQuantity(quantity > 1 ? quantity - 1 : 1);
-                            }}
-                        >
-                            <AntDesign name="minus" size={13} color="white" />
-                        </TouchableOpacity>
-                        <TextInput
-                            style={{
-                                color: AppColors.primary,
-                                fontSize: 12,
-                                fontWeight: "bold",
-                                marginHorizontal: 10,
-                                textAlign: "center",
-                                width: 20,
-                            }}
-                            value={String(quantity)}
-                            onChangeText={(text) => {
-                                setQuantity(Number(text) >= 1 && Number(text) <= 99 ? Number(text) : quantity);
-                            }}
-                            keyboardType="numeric"
-                        />
-                        <TouchableOpacity
-                            style={[styles.button, quantity >= 99 ? styles.disabledButton : {}]}
-                            onPress={() => {
-                                setQuantity(quantity < 99 ? quantity + 1 : 99);
-                            }}
-                        >
-                            <AntDesign name="plus" size={13} color="white" />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-                <TouchableOpacity style={styles.orderButton} onPress={handleAddToCart}>
-                    <Text style={styles.orderButtonText}>Thêm vào giỏ</Text>
+
+            {/* Bottom Add to Cart */}
+            <View style={styles.bottomContainer}>
+                <TouchableOpacity style={styles.addToCartButton} onPress={handleAddToCart}>
+                    <Text style={styles.addToCartText}>Thêm vào giỏ - {formatPrice(getTotalPrice())}</Text>
                 </TouchableOpacity>
             </View>
         </SafeAreaView>
@@ -149,6 +276,26 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: "#fff",
     },
+    header: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 20,
+        paddingVertical: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: "#f0f0f0",
+    },
+    backButton: {
+        padding: 8,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: "600",
+        color: "#333",
+    },
+    favoriteButton: {
+        padding: 8,
+    },
     scrollView: {
         flex: 1,
     },
@@ -159,111 +306,186 @@ const styles = StyleSheet.create({
     foodImage: {
         width: "100%",
         height: "100%",
+        resizeMode: "cover",
     },
-    content: {
+    noImageContainer: {
+        width: "100%",
+        height: "100%",
+        backgroundColor: "#f8f9fa",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    noImageText: {
+        fontSize: 60,
+    },
+    contentContainer: {
         padding: 20,
     },
-    header: {
-        marginBottom: 16,
-        flexDirection: "row",
-        justifyContent: "space-between",
+    titleSection: {
+        marginBottom: 15,
     },
-    title: {
-        fontSize: 15,
+    foodName: {
+        fontSize: 24,
         fontWeight: "bold",
         color: "#333",
         marginBottom: 8,
-        maxWidth: 250,
     },
     ratingContainer: {
         flexDirection: "row",
         alignItems: "center",
     },
     rating: {
-        fontSize: 12,
-        fontWeight: "bold",
-        color: AppColors.primary,
-    },
-    deliveryTime: {
         fontSize: 16,
-        color: "#666",
+        fontWeight: "600",
+        color: "#333",
         marginLeft: 4,
     },
-    description: {
-        fontSize: 12,
+    reviewCount: {
+        fontSize: 14,
         color: "#666",
-        lineHeight: 22,
-        marginBottom: 24,
+        marginLeft: 8,
     },
-    noteSection: {
-        marginBottom: 24,
-        borderTopWidth: 5,
-        borderBottomWidth: 5,
-        borderTopColor: "#e5e5e5a2",
-        borderBottomColor: "#e5e5e5a2",
-        paddingTop: 5,
-    },
-    noteTitle: {
-        fontSize: 13,
-        fontWeight: "bold",
-        color: "#000000",
-    },
-    noteInput: {
-        borderColor: "#c5c5c5",
-        padding: 10,
-        marginTop: 10,
-        borderWidth: 1,
-        borderRadius: 8,
-        fontSize: 12,
-        marginBottom: 10,
-    },
-    divider: {
-        height: 1,
-        backgroundColor: "#E5E5E5",
-        marginVertical: 20,
-    },
-    footer: {
-        position: "fixed",
-        justifyContent: "space-between",
+    priceSection: {
+        flexDirection: "row",
         alignItems: "center",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        paddingVertical: 20,
-        backgroundColor: "#fff",
+        marginBottom: 20,
     },
-    price: {
-        fontSize: 15,
+    currentPrice: {
+        fontSize: 22,
         fontWeight: "bold",
         color: AppColors.primary,
     },
-    discount: {
-        fontSize: 12,
-        fontWeight: "bold",
-        color: "#333",
+    originalPrice: {
+        fontSize: 16,
+        color: "#999",
         textDecorationLine: "line-through",
+        marginLeft: 10,
     },
-    orderButton: {
+    descriptionSection: {
+        marginBottom: 20,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: "600",
+        color: "#333",
+        marginBottom: 10,
+    },
+    description: {
+        fontSize: 15,
+        color: "#666",
+        lineHeight: 22,
+    },
+    sizeSection: {
+        marginBottom: 20,
+    },
+    sizeOptions: {
+        flexDirection: "row",
+        gap: 10,
+    },
+    sizeOption: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: "#ddd",
+    },
+    selectedSizeOption: {
         backgroundColor: AppColors.primary,
-        width: "85%",
+        borderColor: AppColors.primary,
+    },
+    sizeText: {
+        fontSize: 14,
+        color: "#666",
+        fontWeight: "500",
+    },
+    selectedSizeText: {
+        color: "#fff",
+    },
+    quantitySection: {
+        marginBottom: 20,
+    },
+    quantityControls: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 20,
+    },
+    quantityButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: "#f0f0f0",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    quantityText: {
+        fontSize: 18,
+        fontWeight: "600",
+        color: "#333",
+        minWidth: 30,
+        textAlign: "center",
+    },
+    additionalInfo: {
+        marginBottom: 20,
+    },
+    infoItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 10,
+    },
+    infoText: {
+        fontSize: 14,
+        color: "#666",
+        marginLeft: 10,
+    },
+    bottomContainer: {
+        paddingHorizontal: 20,
+        paddingVertical: 15,
+        borderTopWidth: 1,
+        borderTopColor: "#f0f0f0",
+        backgroundColor: "#fff",
+    },
+    addToCartButton: {
+        backgroundColor: AppColors.primary,
+        paddingVertical: 15,
+        borderRadius: 12,
+        alignItems: "center",
+    },
+    addToCartText: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#fff",
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    loadingText: {
+        fontSize: 16,
+        color: "#666",
+    },
+    errorContainer: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: 20,
+    },
+    errorText: {
+        fontSize: 16,
+        color: "#d32f2f",
+        textAlign: "center",
+        marginBottom: 20,
+    },
+    retryButton: {
+        backgroundColor: AppColors.primary,
         paddingHorizontal: 20,
         paddingVertical: 10,
         borderRadius: 8,
     },
-    orderButtonText: {
+    retryText: {
         color: "#fff",
-        fontSize: 12,
-        fontWeight: "bold",
-        textAlign: "center",
-    },
-    button: {
-        textAlign: "center",
-        padding: 3,
-        backgroundColor: AppColors.primary,
-        borderRadius: 5,
-    },
-    disabledButton: {
-        backgroundColor: "#ccc",
+        fontSize: 14,
+        fontWeight: "500",
     },
 });
 
