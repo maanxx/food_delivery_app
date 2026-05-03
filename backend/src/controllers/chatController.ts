@@ -104,28 +104,39 @@ export class ChatController {
                 const { emitMessageToConversation, emitConversationUpdated } = require("../websocket/index");
                 const { ConversationParticipantModel } = require("../models/conversationParticipantModel");
 
+                console.log(`[Chat] Emitting new_message to conversation room: ${conversationId}`);
                 emitMessageToConversation(io, conversationId, message);
 
                 const members = await ConversationParticipantModel.findMembersOfConversation(conversationId);
+                console.log(`[Chat] Broadcasting conversation_updated to ${members.length} members`);
+
+                const lastMessagePayload = {
+                    messageId: message.messageId,
+                    content: message.content,
+                    type: message.type,
+                    senderName: message.senderName,
+                    senderAvatar: message.senderAvatar,
+                    createdAt: message.createdAt,
+                    attachments: message.attachments,
+                };
 
                 for (const member of members) {
                     const unreadCount = member.user_id !== userId ? (member.unread_count || 0) + 1 : 0;
 
                     emitConversationUpdated(io, conversationId, [member.user_id], {
-                        lastMessage: {
-                            messageId: message.messageId,
-                            content: message.content,
-                            type: message.type,
-                            senderName: message.senderName,
-                            senderAvatar: message.senderAvatar,
-                            createdAt: message.createdAt,
-                            attachments: message.attachments,
-                        },
+                        lastMessage: lastMessagePayload,
                         lastMessageTimestamp: message.createdAt,
                         lastMessageId: message.messageId,
                         unreadCount,
+                        // Include the full message for personal-room fallback delivery
+                        newMessage: {
+                            ...message,
+                            conversationId,
+                        },
                     });
                 }
+            } else {
+                console.warn("[Chat] io not available - real-time events not sent");
             }
 
             res.status(201).json({

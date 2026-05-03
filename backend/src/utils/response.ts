@@ -62,6 +62,11 @@ export class ResponseUtils {
         return this.error(res, message, errors, 400);
     }
 
+    // Bad request response
+    static badRequest(res: Response, message: string = "Bad Request"): Response<ApiResponse> {
+        return this.error(res, message, undefined, 400);
+    }
+
     // Unauthorized response
     static unauthorized(res: Response, message: string = "Unauthorized access"): Response<ApiResponse> {
         return this.error(res, message, undefined, 401);

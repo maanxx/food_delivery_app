@@ -13,7 +13,12 @@ const invoice_1 = __importDefault(require("./invoice"));
 const invoiceItems_1 = __importDefault(require("./invoiceItems"));
 const groqAI_1 = __importDefault(require("./groqAI"));
 const chat_1 = __importDefault(require("./chat"));
+const upload_1 = __importDefault(require("./upload"));
+const express_1 = __importDefault(require("express"));
+const path_1 = __importDefault(require("path"));
 const routes = (app) => {
+    // Serve static files from uploads directory
+    app.use("/uploads", express_1.default.static(path_1.default.join(__dirname, "../../uploads")));
     /* GET */
     app.get("/", (req, res) => {
         res.send("Food Delivery Backend running!");
@@ -25,7 +30,7 @@ const routes = (app) => {
     // Review routes
     app.use("/api", review_1.default);
     // Address routes
-    app.use("/api", address_1.default);
+    app.use("/api/addresses", address_1.default);
     // VNPAY routes
     app.use("/api/vnpay", vnpay_1.default);
     // Favorite Dishes routes
@@ -38,5 +43,7 @@ const routes = (app) => {
     app.use("/api/ai", groqAI_1.default);
     // Chat routes
     app.use("/api/conversations", chat_1.default);
+    // Upload routes
+    app.use("/api/upload", upload_1.default);
 };
 exports.default = routes;

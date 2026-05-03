@@ -6,7 +6,7 @@ const jwt_1 = require("../utils/jwt");
 const initializeWebSocket = (server) => {
     const io = new socket_io_1.Server(server, {
         cors: {
-            origin: process.env.NODE_ENV === "production" ? ["http://localhost:8081"] : "*",
+            origin: "*",
             credentials: true,
         },
         transports: ["websocket", "polling"],
@@ -28,12 +28,15 @@ const initializeWebSocket = (server) => {
     });
     io.on("connection", (socket) => {
         const userId = socket.userId;
-        console.log(`✅ User ${userId} connected: ${socket.id}`);
+        console.log(`[WS] ✅ User ${userId} connected: ${socket.id}`);
+        // Each user joins their personal room for targeted delivery
         socket.join(`user:${userId}`);
+        console.log(`[WS] User ${userId} joined personal room user:${userId}`);
         socket.on("join_conversation", (conversationId) => {
             const roomName = `conversation_${conversationId}`;
             socket.join(roomName);
-            io.to(roomName).emit("user_online", {
+            console.log(`[WS] User ${userId} joined conversation room: ${roomName}`);
+            socket.to(roomName).emit("user_online", {
                 userId,
                 conversationId,
                 timestamp: new Date().toISOString(),
@@ -42,7 +45,8 @@ const initializeWebSocket = (server) => {
         socket.on("leave_conversation", (conversationId) => {
             const roomName = `conversation_${conversationId}`;
             socket.leave(roomName);
-            io.to(roomName).emit("user_offline", {
+            console.log(`[WS] User ${userId} left conversation room: ${roomName}`);
+            socket.to(roomName).emit("user_offline", {
                 userId,
                 conversationId,
                 timestamp: new Date().toISOString(),
@@ -66,35 +70,63 @@ const initializeWebSocket = (server) => {
                 timestamp: new Date().toISOString(),
             });
         });
-        socket.on("disconnect", () => {
-            console.log(`❌ User ${userId} disconnected: ${socket.id}`);
+        socket.on("disconnect", (reason) => {
+            console.log(`[WS] ❌ User ${userId} disconnected: ${socket.id} (reason: ${reason})`);
         });
         socket.on("error", (error) => {
-            console.error(`Socket error for user ${userId}:`, error);
+            console.error(`[WS] Socket error for user ${userId}:`, error);
         });
     });
     return io;
 };
 exports.initializeWebSocket = initializeWebSocket;
+/**
+ * Emits a new_message to everyone in the conversation room.
+ * This covers User B if they are currently inside the chat detail screen.
+ */
 const emitMessageToConversation = (io, conversationId, message) => {
     const roomName = `conversation_${conversationId}`;
-    io.to(roomName).emit("new_message", {
+    const payload = {
         ...message,
+        conversationId,
         timestamp: new Date().toISOString(),
+    };
+    console.log(`[WS] Emitting new_message to room ${roomName}`, {
+        messageId: message.messageId,
+        senderId: message.senderId,
+        type: message.type,
     });
+    io.to(roomName).emit("new_message", payload);
 };
 exports.emitMessageToConversation = emitMessageToConversation;
+/**
+ * Emits conversation_updated to each member's personal room (user:<userId>).
+ * This covers User B even if they are on the chat LIST screen (not inside the chat room).
+ * Also emits new_message to personal rooms for fallback delivery when not in the conversation room.
+ */
 const emitConversationUpdated = (io, conversationId, memberIds, conversationData) => {
     for (const memberId of memberIds) {
         const userRoom = `user:${memberId}`;
-        io.to(userRoom).emit("conversation_updated", {
+        const payload = {
             conversationId,
             lastMessage: conversationData.lastMessage || null,
             lastMessageTimestamp: conversationData.lastMessageTimestamp,
             lastMessageId: conversationData.lastMessageId,
             unreadCount: conversationData.unreadCount,
             timestamp: new Date().toISOString(),
+        };
+        console.log(`[WS] Emitting conversation_updated to user room ${userRoom}`, {
+            conversationId,
+            unreadCount: conversationData.unreadCount,
         });
+        io.to(userRoom).emit("conversation_updated", payload);
+        // Also deliver the new_message to user's personal room.
+        // This ensures User B receives the message even if they haven't joined
+        // the conversation room yet (e.g., app just opened, not in chat screen).
+        if (conversationData.lastMessage && conversationData.newMessage) {
+            console.log(`[WS] Fallback: Emitting new_message to personal room ${userRoom}`);
+            io.to(userRoom).emit("new_message", conversationData.newMessage);
+        }
     }
 };
 exports.emitConversationUpdated = emitConversationUpdated;

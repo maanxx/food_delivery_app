@@ -26,10 +26,12 @@ const ChatListScreen = () => {
     useFocusEffect(
         useCallback(() => {
             loadConversations();
-            SocketService.connect();
 
-            // Listen for real-time updates to the conversation list
+            let isMounted = true;
+
             const handleConversationUpdated = (data: any) => {
+                console.log("[ChatList] conversation_updated received:", data);
+                if (!isMounted) return;
                 setConversations((prev) => {
                     const existingIndex = prev.findIndex((c) => c.conversationId === data.conversationId);
                     if (existingIndex > -1) {
@@ -41,15 +43,25 @@ const ChatListScreen = () => {
                             return bTime - aTime;
                         });
                     } else {
+                        // New conversation appeared — reload list
                         loadConversations();
                         return prev;
                     }
                 });
             };
 
-            SocketService.on("conversation_updated", handleConversationUpdated);
+            const initSocket = async () => {
+                await SocketService.connect();
+                if (!isMounted) return;
+                console.log("[ChatList] Socket connected, registering conversation_updated listener");
+                SocketService.on("conversation_updated", handleConversationUpdated);
+            };
+
+            initSocket();
 
             return () => {
+                isMounted = false;
+                console.log("[ChatList] Cleanup: removing conversation_updated listener");
                 SocketService.off("conversation_updated", handleConversationUpdated);
             };
         }, [])

@@ -31,6 +31,10 @@ class ResponseUtils {
     static validationError(res, errors, message = "Validation failed") {
         return this.error(res, message, errors, 400);
     }
+    // Bad request response
+    static badRequest(res, message = "Bad Request") {
+        return this.error(res, message, undefined, 400);
+    }
     // Unauthorized response
     static unauthorized(res, message = "Unauthorized access") {
         return this.error(res, message, undefined, 401);

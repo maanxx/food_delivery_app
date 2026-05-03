@@ -36,6 +36,7 @@ const ChatDetailScreen = () => {
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState("");
     const [userId, setUserId] = useState<string | null>(null);
+    const userIdRef = useRef<string | null>(null); // stable ref for use in socket callbacks
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
@@ -47,61 +48,74 @@ const ChatDetailScreen = () => {
             const userData = await AsyncStorage.getItem("user_data");
             if (userData) {
                 const parsed = JSON.parse(userData);
-                setUserId(parsed.user_id || parsed.id);
+                const id = parsed.user_id || parsed.id;
+                setUserId(id);
+                userIdRef.current = id; // keep ref in sync
             }
         };
         fetchUserId();
     }, []);
 
+    // Load message history when conversationId is available
     useEffect(() => {
-        console.log("ChatDetailScreen params:", params);
+        if (!conversationId) {
+            console.warn("[ChatDetail] No conversationId provided");
+            return;
+        }
         const loadMessages = async () => {
-            if (!conversationId) {
-                console.warn("No conversationId provided to ChatDetailScreen");
-                return;
-            }
             try {
-                console.log("Fetching messages for conversation:", conversationId);
+                console.log("[ChatDetail] Fetching messages for:", conversationId);
                 const data = await ChatApi.getMessages(conversationId);
-                console.log("Messages received:", data.messages?.length || 0);
+                console.log("[ChatDetail] Messages received:", data.messages?.length || 0);
                 setMessages(data.messages || []);
-                
-                // Mark as read
-                if (data.messages && data.messages.length > 0) {
-                    const unreadIds = data.messages
-                        .filter((m: any) => !m.isRead && m.senderId !== userId)
-                        .map((m: any) => m.messageId);
-                    if (unreadIds.length > 0) {
-                        ChatApi.markMessagesAsRead(conversationId, unreadIds);
-                    }
-                }
             } catch (error) {
-                console.error("Failed to load messages:", error);
+                console.error("[ChatDetail] Failed to load messages:", error);
             }
         };
-
         loadMessages();
+    }, [conversationId]);
 
-        // Connect and join room
-        SocketService.connect();
-        SocketService.joinConversation(conversationId);
+    // Socket connection & real-time listener lifecycle
+    // Only depends on conversationId — userId comes from the stable ref, not state
+    useEffect(() => {
+        if (!conversationId) return;
+
+        let isMounted = true;
 
         const handleNewMessage = (message: any) => {
-            setMessages((prev) => [message, ...prev]);
-            
-            // Auto mark as read if screen is open
-            if (message.senderId !== userId) {
-                ChatApi.markMessagesAsRead(conversationId, [message.messageId]);
+            console.log("[ChatDetail] new_message received:", message);
+            if (!isMounted) return;
+            // Filter: only show messages belonging to this conversation
+            if (message.conversationId && message.conversationId !== conversationId) return;
+            setMessages((prev) => {
+                // Deduplicate by messageId
+                if (prev.some((m) => m.messageId === message.messageId)) return prev;
+                return [message, ...prev];
+            });
+            // Auto-mark as read for messages from others
+            if (message.senderId && message.senderId !== userIdRef.current) {
+                ChatApi.markMessagesAsRead(conversationId, [message.messageId]).catch(() => {});
             }
         };
 
-        SocketService.on("new_message", handleNewMessage);
+        const initSocket = async () => {
+            console.log("[ChatDetail] Connecting socket and joining room:", conversationId);
+            await SocketService.connect();
+            if (!isMounted) return;
+            SocketService.joinConversation(conversationId);
+            SocketService.on("new_message", handleNewMessage);
+            console.log("[ChatDetail] Socket listener registered for new_message");
+        };
+
+        initSocket();
 
         return () => {
+            isMounted = false;
+            console.log("[ChatDetail] Cleanup: leaving room and removing listener");
             SocketService.leaveConversation(conversationId);
             SocketService.off("new_message", handleNewMessage);
         };
-    }, [conversationId, userId]);
+    }, [conversationId]); // ← removed userId from deps: use userIdRef.current inside instead
 
     const handleSend = async (content = inputText, type = "text", attachments: any[] = [], metadata = {}) => {
         if (!content.trim() && attachments.length === 0) return;

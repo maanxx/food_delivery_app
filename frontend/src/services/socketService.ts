@@ -5,31 +5,82 @@ import API_CONFIG from "../configs/api";
 class SocketService {
     private socket: Socket | null = null;
     private listeners: Map<string, Function[]> = new Map();
+    private isConnecting: boolean = false;
+    private pendingRooms: string[] = [];
 
     async connect() {
-        if (this.socket?.connected) return;
+        // If already connected, nothing to do
+        if (this.socket?.connected) {
+            console.log("[Socket] Already connected:", this.socket.id);
+            return;
+        }
+
+        // If a connection attempt is already in progress, wait for it
+        if (this.isConnecting) {
+            console.log("[Socket] Connection already in progress, skipping duplicate connect()");
+            return;
+        }
 
         const token = await AsyncStorage.getItem("access_token");
-        if (!token) return;
+        if (!token) {
+            console.warn("[Socket] No access_token found, cannot connect");
+            return;
+        }
+
+        // Clean up any stale socket
+        if (this.socket) {
+            this.socket.removeAllListeners();
+            this.socket.disconnect();
+            this.socket = null;
+        }
+
+        this.isConnecting = true;
+        console.log("[Socket] Connecting to", API_CONFIG.BASE_URL);
 
         this.socket = io(API_CONFIG.BASE_URL, {
             auth: { token },
             transports: ["websocket", "polling"],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
         });
 
         this.socket.on("connect", () => {
-            console.log("WebSocket connected:", this.socket?.id);
+            this.isConnecting = false;
+            console.log("[Socket] ✅ Connected:", this.socket?.id);
+
+            // Re-join any pending rooms after reconnection
+            if (this.pendingRooms.length > 0) {
+                console.log("[Socket] Rejoining pending rooms:", this.pendingRooms);
+                this.pendingRooms.forEach((roomId) => {
+                    this.socket?.emit("join_conversation", roomId);
+                });
+            }
         });
 
-        this.socket.on("disconnect", () => {
-            console.log("WebSocket disconnected");
+        this.socket.on("disconnect", (reason) => {
+            this.isConnecting = false;
+            console.log("[Socket] ❌ Disconnected:", reason);
         });
 
-        // Forward events to listeners
-        const events = ["new_message", "user_online", "user_offline", "user_typing", "user_stop_typing", "conversation_updated"];
-        
+        this.socket.on("connect_error", (error) => {
+            this.isConnecting = false;
+            console.error("[Socket] Connection error:", error.message);
+        });
+
+        // Forward events to registered listeners
+        const events = [
+            "new_message",
+            "user_online",
+            "user_offline",
+            "user_typing",
+            "user_stop_typing",
+            "conversation_updated",
+        ];
+
         events.forEach((event) => {
             this.socket?.on(event, (data) => {
+                console.log(`[Socket] Event received: ${event}`, data);
                 const eventListeners = this.listeners.get(event) || [];
                 eventListeners.forEach((listener) => listener(data));
             });
@@ -38,17 +89,40 @@ class SocketService {
 
     disconnect() {
         if (this.socket) {
+            console.log("[Socket] Disconnecting");
+            this.socket.removeAllListeners();
             this.socket.disconnect();
             this.socket = null;
         }
+        this.isConnecting = false;
+        this.pendingRooms = [];
     }
 
     joinConversation(conversationId: string) {
-        this.socket?.emit("join_conversation", conversationId);
+        if (!conversationId) return;
+
+        // Track this room so we can rejoin on reconnect
+        if (!this.pendingRooms.includes(conversationId)) {
+            this.pendingRooms.push(conversationId);
+        }
+
+        if (this.socket?.connected) {
+            console.log("[Socket] Joining conversation room:", conversationId);
+            this.socket.emit("join_conversation", conversationId);
+        } else {
+            console.log("[Socket] Not connected yet, room queued for join:", conversationId);
+            // Will be joined in the connect callback above
+        }
     }
 
     leaveConversation(conversationId: string) {
-        this.socket?.emit("leave_conversation", conversationId);
+        if (!conversationId) return;
+        this.pendingRooms = this.pendingRooms.filter((r) => r !== conversationId);
+
+        if (this.socket?.connected) {
+            console.log("[Socket] Leaving conversation room:", conversationId);
+            this.socket.emit("leave_conversation", conversationId);
+        }
     }
 
     emitTyping(conversationId: string) {
@@ -61,14 +135,21 @@ class SocketService {
 
     on(event: string, callback: Function) {
         const eventListeners = this.listeners.get(event) || [];
-        eventListeners.push(callback);
-        this.listeners.set(event, eventListeners);
+        // Prevent duplicate registration of the same function
+        if (!eventListeners.includes(callback)) {
+            eventListeners.push(callback);
+            this.listeners.set(event, eventListeners);
+        }
     }
 
     off(event: string, callback: Function) {
         const eventListeners = this.listeners.get(event) || [];
-        const filteredListeners = eventListeners.filter((listener) => listener !== callback);
-        this.listeners.set(event, filteredListeners);
+        const filtered = eventListeners.filter((listener) => listener !== callback);
+        this.listeners.set(event, filtered);
+    }
+
+    isConnected(): boolean {
+        return this.socket?.connected === true;
     }
 }
 

@@ -6,17 +6,23 @@ const conversationParticipantModel_1 = require("../models/conversationParticipan
 const messageModel_1 = require("../models/messageModel");
 const User_1 = require("../models/User");
 const toCamelCase = (obj) => {
+    if (obj === null || obj === undefined)
+        return obj;
     if (Array.isArray(obj)) {
         return obj.map((v) => toCamelCase(v));
     }
-    else if (obj !== null && obj.constructor === Object) {
-        return Object.keys(obj).reduce((result, key) => {
-            const camelKey = key.replace(/([-_][a-z])/ig, ($1) => {
-                return $1.toUpperCase().replace('-', '').replace('_', '');
-            });
-            result[camelKey] = toCamelCase(obj[key]);
-            return result;
-        }, {});
+    else if (typeof obj === 'object') {
+        // Safe check for constructor to avoid "Cannot read properties of undefined (reading 'constructor')"
+        const isPlainObject = obj.constructor ? obj.constructor === Object : Object.getPrototypeOf(obj) === null;
+        if (isPlainObject || !obj.constructor) {
+            return Object.keys(obj).reduce((result, key) => {
+                const camelKey = key.replace(/([-_][a-z])/ig, ($1) => {
+                    return $1.toUpperCase().replace('-', '').replace('_', '');
+                });
+                result[camelKey] = toCamelCase(obj[key]);
+                return result;
+            }, {});
+        }
     }
     return obj;
 };
@@ -205,6 +211,7 @@ class ChatService {
                 mentions: messageData.mentions || [],
                 attachments: messageData.attachments || [],
                 reply_to_id: messageData.replyToId || null,
+                metadata: messageData.metadata || null,
             });
             await conversationModel_1.ConversationModel.updateLastMessage(conversationId, message.message_id, new Date().toISOString());
             const members = await conversationParticipantModel_1.ConversationParticipantModel.findMembersOfConversation(conversationId) || [];
