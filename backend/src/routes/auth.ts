@@ -34,6 +34,8 @@ router.post("/google-signin", AuthController.googleSignIn);
 // Protected routes (require authentication)
 router.get("/profile", AuthMiddleware.authenticate, AuthController.getProfile);
 
+router.get("/users", AuthMiddleware.authenticate, AuthController.getAllUsers);
+
 router.put(
     "/profile",
     AuthMiddleware.authenticate,

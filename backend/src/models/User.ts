@@ -23,6 +23,12 @@ export const UserModel = {
         return rows[0] || null;
     },
 
+    async findByEmailOrUsername(identifier: string) {
+        if (!identifier) return null;
+        const [rows]: any = await pool.query("SELECT * FROM Users WHERE email = ? OR username = ? LIMIT 1", [identifier, identifier]);
+        return rows[0] || null;
+    },
+
     async findByPhone(phone: string | null) {
         if (!phone) return null;
         const [rows]: any = await pool.query("SELECT * FROM Users WHERE phone_number = ? LIMIT 1", [phone]);
@@ -123,5 +129,10 @@ export const UserModel = {
     async setOffline(userId: string) {
         await pool.query("UPDATE Users SET is_online = 0 WHERE user_id = ?", [userId]);
         return true;
+    },
+
+    async findAll() {
+        const [rows]: any = await pool.query("SELECT user_id, fullname, email, avatar_path, role, is_online FROM Users");
+        return rows || [];
     },
 };

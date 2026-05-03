@@ -1,10 +1,14 @@
-import http from "http";
 import dotenv from "dotenv";
+dotenv.config();
+
+if (!process.env.GROQ_API_KEY) {
+    console.warn("⚠️ Missing GROQ_API_KEY in environment variables");
+}
+
+import http from "http";
 import debugLib from "debug";
 import app from "./app";
 import { testConnection } from "./configs/database";
-
-dotenv.config();
 
 const debug = debugLib("backend:server");
 const port = normalizePort(process.env.PORT || "5678");
@@ -16,6 +20,10 @@ const server = http.createServer(app);
 const startServer = async () => {
     try {
         await testConnection();
+        const { initializeWebSocket } = require("./websocket");
+        const io = initializeWebSocket(server);
+        app.set("io", io);
+
         server.listen(port, () => {
             console.log(`✅ Server listening at http://localhost:${port}`);
         });

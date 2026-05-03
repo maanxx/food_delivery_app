@@ -13,6 +13,12 @@ exports.UserModel = {
         const [rows] = await db_1.default.query("SELECT * FROM Users WHERE email = ? LIMIT 1", [email]);
         return rows[0] || null;
     },
+    async findByEmailOrUsername(identifier) {
+        if (!identifier)
+            return null;
+        const [rows] = await db_1.default.query("SELECT * FROM Users WHERE email = ? OR username = ? LIMIT 1", [identifier, identifier]);
+        return rows[0] || null;
+    },
     async findByPhone(phone) {
         if (!phone)
             return null;
@@ -110,5 +116,9 @@ exports.UserModel = {
     async setOffline(userId) {
         await db_1.default.query("UPDATE Users SET is_online = 0 WHERE user_id = ?", [userId]);
         return true;
+    },
+    async findAll() {
+        const [rows] = await db_1.default.query("SELECT user_id, fullname, email, avatar_path, role, is_online FROM Users");
+        return rows || [];
     },
 };

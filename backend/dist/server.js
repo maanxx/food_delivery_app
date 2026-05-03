@@ -3,12 +3,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const http_1 = __importDefault(require("http"));
 const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
+if (!process.env.GROQ_API_KEY) {
+    console.warn("⚠️ Missing GROQ_API_KEY in environment variables");
+}
+const http_1 = __importDefault(require("http"));
 const debug_1 = __importDefault(require("debug"));
 const app_1 = __importDefault(require("./app"));
 const database_1 = require("./configs/database");
-dotenv_1.default.config();
 const debug = (0, debug_1.default)("backend:server");
 const port = normalizePort(process.env.PORT || "5678");
 app_1.default.set("port", port);
@@ -17,6 +20,9 @@ const server = http_1.default.createServer(app_1.default);
 const startServer = async () => {
     try {
         await (0, database_1.testConnection)();
+        const { initializeWebSocket } = require("./websocket");
+        const io = initializeWebSocket(server);
+        app_1.default.set("io", io);
         server.listen(port, () => {
             console.log(`✅ Server listening at http://localhost:${port}`);
         });

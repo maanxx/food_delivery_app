@@ -23,24 +23,21 @@ class FoodApiClient {
                 options.body = JSON.stringify(data);
             }
 
-            const response = await fetch(url, options);
-            const responseText = await response.text();
-            // console.log("Food API Response Text:", responseText);
-
-            let result;
+            const res = await fetch(url, options);
+            const text = await res.text();
+            
+            let data;
             try {
-                result = JSON.parse(responseText);
-            } catch (parseError) {
-                console.error("JSON Parse Error:", parseError);
-                console.error("Response was:", responseText);
-                throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}...`);
+                data = JSON.parse(text);
+            } catch {
+                throw new Error(text);
             }
 
-            if (!response.ok) {
-                throw new Error(result.message || `HTTP error! status: ${response.status}`);
+            if (!res.ok) {
+                throw new Error(data?.message || "Request failed");
             }
 
-            return result;
+            return data;
         } catch (error) {
             console.error("Food API Error:", error);
             return {

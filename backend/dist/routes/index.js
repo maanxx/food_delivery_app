@@ -12,6 +12,7 @@ const favorite_1 = __importDefault(require("./favorite"));
 const invoice_1 = __importDefault(require("./invoice"));
 const invoiceItems_1 = __importDefault(require("./invoiceItems"));
 const groqAI_1 = __importDefault(require("./groqAI"));
+const chat_1 = __importDefault(require("./chat"));
 const routes = (app) => {
     /* GET */
     app.get("/", (req, res) => {
@@ -35,5 +36,7 @@ const routes = (app) => {
     app.use("/api/invoice-items", invoiceItems_1.default);
     // OpenAI routes
     app.use("/api/ai", groqAI_1.default);
+    // Chat routes
+    app.use("/api/conversations", chat_1.default);
 };
 exports.default = routes;

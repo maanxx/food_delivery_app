@@ -1,6 +1,13 @@
-// API Configuration
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+
+console.log("BASE_URL:", BASE_URL);
+
+if (!BASE_URL) {
+  throw new Error("Missing API URL: Check your .env file");
+}
+
 const API_CONFIG = {
-    BASE_URL: process.env.EXPO_PUBLIC_BACKEND_URL || "http://localhost:3000",
+    BASE_URL: BASE_URL,
     ENDPOINTS: {
         AUTH: {
             REGISTER: "/api/auth/register",

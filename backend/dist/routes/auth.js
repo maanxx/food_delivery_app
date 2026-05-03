@@ -49,6 +49,7 @@ router.post("/forgot-password", validation_1.default.forgotPassword, validation_
 router.post("/google-signin", AuthController_1.default.googleSignIn);
 // Protected routes (require authentication)
 router.get("/profile", auth_1.default.authenticate, AuthController_1.default.getProfile);
+router.get("/users", auth_1.default.authenticate, AuthController_1.default.getAllUsers);
 router.put("/profile", auth_1.default.authenticate, AuthController_1.default.updateProfile);
 router.post("/change-password", auth_1.default.authenticate, validation_1.default.changePassword, AuthController_1.default.changePassword);
 router.post("/logout", auth_1.default.authenticate, AuthController_1.default.logout);

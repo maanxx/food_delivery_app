@@ -81,47 +81,48 @@ export class AuthController {
     // Login user
     static async login(req: Request, res: Response): Promise<void> {
         try {
-            const { email, password } = req.body;
+            const { identifier, email, username, password } = req.body;
+            const loginId = identifier || email || username;
 
-            console.log("Email :" + email + "Password: " + password);
-
-            // Find user by email
-            const user = await UserModel.findByEmail(email);
-            if (!user) {
-                ResponseUtils.unauthorized(res, "Email hoặc mật khẩu không đúng");
+            if (!loginId || !password) {
+                ResponseUtils.badRequest(res, "Vui lòng nhập tài khoản và mật khẩu");
                 return;
             }
 
-            // Verify password
+            // 1. Tìm user trong database (bằng email hoặc username)
+            const user = await UserModel.findByEmailOrUsername(loginId);
+            if (!user) {
+                ResponseUtils.unauthorized(res, "Tài khoản hoặc mật khẩu không đúng");
+                return;
+            }
+
+            // 2. Compare password bằng bcrypt
             const isPasswordValid = await UserModel.verifyPassword(password, user.password);
             if (!isPasswordValid) {
-                ResponseUtils.unauthorized(res, "Email hoặc mật khẩu không đúng");
+                ResponseUtils.unauthorized(res, "Tài khoản hoặc mật khẩu không đúng");
                 return;
             }
 
-            // Generate tokens
+            // 3. Generate JWT token
             const tokenPayload = {
                 userId: user.user_id,
                 email: user.email,
                 role: user.role,
             };
-
             const tokens = JWTUtils.generateTokenPair(tokenPayload);
 
-            // Update last login
+            // Cập nhật thời gian login
             await UserModel.updateLastLogin(user.user_id);
 
-            // Remove password from response
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            // 4. Trả response success (không trả về password)
             const { password: _, ...userWithoutPassword } = user;
-
             ResponseUtils.success(res, "Đăng nhập thành công", {
                 user: userWithoutPassword,
                 tokens,
             });
         } catch (error) {
             console.error("Login error:", error);
-            ResponseUtils.error(res, "Lỗi server khi đăng nhập");
+            ResponseUtils.error(res, "Lỗi server trong quá trình đăng nhập");
         }
     }
 
@@ -180,6 +181,25 @@ export class AuthController {
         } catch (error) {
             console.error("Get profile error:", error);
             ResponseUtils.error(res, "Lỗi server khi lấy thông tin profile");
+        }
+    }
+
+    // Get all users (for discovery)
+    static async getAllUsers(req: UserRequest, res: Response): Promise<void> {
+        try {
+            if (!req.userId) {
+                ResponseUtils.unauthorized(res, "User không được xác thực");
+                return;
+            }
+
+            const users = await UserModel.findAll();
+            // Lọc bỏ user hiện tại
+            const otherUsers = users.filter((u: any) => u.user_id !== req.userId);
+
+            ResponseUtils.success(res, "Lấy danh sách user thành công", otherUsers);
+        } catch (error) {
+            console.error("Get all users error:", error);
+            ResponseUtils.error(res, "Lỗi server khi lấy danh sách user");
         }
     }
 

@@ -3,12 +3,22 @@ import Groq from "groq-sdk";
 
 const router = Router();
 
-const client = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
-});
+const apiKey = process.env.GROQ_API_KEY;
+
+if (!apiKey) {
+    console.warn("⚠️ GROQ_API_KEY missing — AI routes disabled");
+}
+
+export const client = apiKey ? new Groq({ apiKey }) : null;
 
 router.post("/describe-food", async (req, res) => {
     try {
+        if (!client) {
+            return res.status(503).json({
+                message: "AI service unavailable",
+            });
+        }
+
         const { query } = req.body;
 
         if (!query) {

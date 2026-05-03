@@ -3,19 +3,27 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.client = void 0;
 const express_1 = require("express");
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const router = (0, express_1.Router)();
-const client = new groq_sdk_1.default({
-    apiKey: process.env.GROQ_API_KEY,
-});
+const apiKey = process.env.GROQ_API_KEY;
+if (!apiKey) {
+    console.warn("⚠️ GROQ_API_KEY missing — AI routes disabled");
+}
+exports.client = apiKey ? new groq_sdk_1.default({ apiKey }) : null;
 router.post("/describe-food", async (req, res) => {
     try {
+        if (!exports.client) {
+            return res.status(503).json({
+                message: "AI service unavailable",
+            });
+        }
         const { query } = req.body;
         if (!query) {
             return res.status(400).json({ error: "Missing query" });
         }
-        const completion = await client.chat.completions.create({
+        const completion = await exports.client.chat.completions.create({
             model: "llama-3.1-8b-instant",
             messages: [
                 { role: "system", content: "Bạn là chuyên gia ẩm thực Việt Nam" },

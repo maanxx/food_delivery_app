@@ -8,8 +8,14 @@ import favoriteRoutes from "./favorite";
 import invoiceRoutes from "./invoice";
 import invoiceItemsRoutes from "./invoiceItems";
 import openAIRoutes from "./groqAI";
+import chatRoutes from "./chat";
+import uploadRoutes from "./upload";
+import express from "express";
+import path from "path";
 
 const routes = (app: Application) => {
+    // Serve static files from uploads directory
+    app.use("/uploads", express.static(path.join(__dirname, "../../uploads")));
     /* GET */
     app.get("/", (req, res) => {
         res.send("Food Delivery Backend running!");
@@ -41,6 +47,12 @@ const routes = (app: Application) => {
 
     // OpenAI routes
     app.use("/api/ai", openAIRoutes);
+
+    // Chat routes
+    app.use("/api/conversations", chatRoutes);
+
+    // Upload routes
+    app.use("/api/upload", uploadRoutes);
 };
 
 export default routes;
