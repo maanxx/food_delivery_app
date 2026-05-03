@@ -31,7 +31,7 @@ const routes = (app: Application) => {
     app.use("/api", reviewRoutes);
 
     // Address routes
-    app.use("/api", addressRoutes);
+    app.use("/api/addresses", addressRoutes);
 
     // VNPAY routes
     app.use("/api/vnpay", vnpayRoutes);

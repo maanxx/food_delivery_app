@@ -10,18 +10,18 @@ import {
 const router = Router();
 
 // GET /api/addresses/user/:userId - Get all addresses for a user
-router.get("/addresses/user/:userId", getUserAddresses);
+router.get("/user/:userId", getUserAddresses);
 
 // POST /api/addresses - Add new address
-router.post("/addresses", addAddress);
+router.post("/", addAddress);
 
 // PUT /api/addresses/:id - Update address
-router.put("/addresses/:id", updateAddress);
+router.put("/:id", updateAddress);
 
 // DELETE /api/addresses/:id - Delete address
-router.delete("/addresses/:id", deleteAddress);
+router.delete("/:id", deleteAddress);
 
 // PUT /api/addresses/:id/default - Set address as default
-router.put("/addresses/:id/default", setDefaultAddress);
+router.put("/:id/default", setDefaultAddress);
 
 export default router;

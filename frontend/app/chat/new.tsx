@@ -41,18 +41,29 @@ const NewChatScreen = () => {
     };
 
     const handleSelectUser = async (user: any) => {
+        console.log("handleSelectUser called with:", user);
         try {
             // Get or create conversation with this user
+            console.log("Requesting getOrCreateDirectConversation for participant:", user.user_id);
             const conversation = await ChatApi.getOrCreateDirectConversation(user.user_id);
+            console.log("Conversation received:", conversation);
             
+            if (!conversation || !conversation.conversationId) {
+                console.error("Invalid conversation object returned:", conversation);
+                return;
+            }
+
             // Navigate to chat detail screen
-            router.replace({
+            const navigationParams = {
+                id: conversation.conversationId,
+                conversationName: user.fullname || user.email,
+                avatar: user.avatar || user.avatar_path,
+            };
+            console.log("Navigating to /chat/[id] with params:", navigationParams);
+
+            router.push({
                 pathname: "/chat/[id]",
-                params: {
-                    id: conversation.conversation_id,
-                    conversationName: user.fullname || user.email,
-                    avatar: user.avatar || user.avatar_path,
-                }
+                params: navigationParams
             });
         } catch (error) {
             console.error("Failed to create/open conversation:", error);

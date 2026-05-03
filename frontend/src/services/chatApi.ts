@@ -55,8 +55,12 @@ class ChatApi {
     async sendMessage(conversationId: string, content: string, type = "text", metadata?: any) {
         return this.fetchWithAuth(`/api/conversations/${conversationId}/messages`, {
             method: "POST",
-            body: JSON.stringify({ content, type, metadata }),
+            body: JSON.stringify({ content, type, ...metadata }),
         });
+    }
+
+    getBaseUrl() {
+        return API_CONFIG.BASE_URL;
     }
 
     async uploadFile(formData: FormData) {

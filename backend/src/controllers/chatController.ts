@@ -88,19 +88,16 @@ export class ChatController {
         try {
             const userId = req.userId;
             const { conversationId } = req.params;
-            const { content, type = "text", mentions = [], replyToId } = req.body;
+            const { content, type = "text", mentions = [], replyToId, attachments = [], metadata = {} } = req.body;
             const io = req.app.get("io");
 
-            if (!content) {
-                return ResponseUtils.badRequest(res, "content is required");
-            }
-
             const message = await ChatService.sendMessage(userId, conversationId, {
-                content: content,
+                content: content || "",
                 type: type,
                 mentions,
                 replyToId,
-                attachments: [],
+                attachments: attachments,
+                metadata: metadata,
             });
 
             if (io) {
