@@ -76,6 +76,8 @@ class SocketService {
             "user_typing",
             "user_stop_typing",
             "conversation_updated",
+            "message_deleted",
+            "message_recalled",
         ];
 
         events.forEach((event) => {
@@ -96,6 +98,8 @@ class SocketService {
         }
         this.isConnecting = false;
         this.pendingRooms = [];
+        this.listeners.clear();
+        console.log("[Socket] Listeners cleared");
     }
 
     joinConversation(conversationId: string) {

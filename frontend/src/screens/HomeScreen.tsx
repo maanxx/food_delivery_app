@@ -182,7 +182,7 @@ const HomeScreen = () => {
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                     <View style={{ flex: 1 }}>
                         <AppLogo color={"#fff"} fontSize={30} />
-                        <Text style={styles.tagline}>Chào {user?.full_name || "bạn"}!</Text>
+                        <Text style={styles.tagline}>Chào {user?.fullname || "bạn"}!</Text>
                     </View>
 
                     <Pressable onPress={() => router.push("/(tabs)/profile")}>

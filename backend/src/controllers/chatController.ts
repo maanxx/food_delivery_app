@@ -178,4 +178,47 @@ export class ChatController {
             ResponseUtils.error(res, error.message);
         }
     }
+
+    static async deleteMessage(req: any, res: Response) {
+        try {
+            const userId = req.userId;
+            const { conversationId, messageId } = req.params;
+            const { forEveryone = false } = req.body;
+            const io = req.app.get("io");
+
+            if (forEveryone) {
+                await ChatService.deleteMessageForEveryone(userId, conversationId, messageId);
+            } else {
+                await ChatService.deleteMessageForMe(userId, conversationId, messageId);
+            }
+
+            if (io) {
+                const { emitMessageDeleted } = require("../websocket/index");
+                emitMessageDeleted(io, conversationId, messageId, forEveryone, userId);
+            }
+
+            ResponseUtils.success(res, "Message deleted successfully");
+        } catch (error: any) {
+            ResponseUtils.error(res, error.message);
+        }
+    }
+
+    static async recallMessage(req: any, res: Response) {
+        try {
+            const userId = req.userId;
+            const { conversationId, messageId } = req.params;
+            const io = req.app.get("io");
+
+            await ChatService.recallMessage(userId, conversationId, messageId);
+
+            if (io) {
+                const { emitMessageRecalled } = require("../websocket/index");
+                emitMessageRecalled(io, conversationId, messageId);
+            }
+
+            ResponseUtils.success(res, "Message recalled successfully");
+        } catch (error: any) {
+            ResponseUtils.error(res, error.message);
+        }
+    }
 }

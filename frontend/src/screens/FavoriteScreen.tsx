@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { Feather, MaterialIcons, AntDesign } from "@expo/vector-icons";
 import { AppColors } from "../assets/styles/AppColor";
 import { useAuth } from "../contexts/AuthContext";
+import API_CONFIG from "../configs/api";
 import { FoodWithDetails } from "../types/food";
 
 interface FavoriteItem {
@@ -39,7 +40,19 @@ const FavoriteScreen = () => {
     const loadFavorites = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/favorite/${user?.user_id}`);
+            const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.FAVORITE.USER_FAVORITES}/${user?.user_id}`);
+            
+            if (!res.ok) {
+                throw new Error(`Failed to load favorites: ${res.status}`);
+            }
+
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const text = await res.text();
+                console.error("[FavoriteScreen] Expected JSON but got:", text.substring(0, 100));
+                throw new Error("Server returned non-JSON response");
+            }
+
             const apiData = await res.json();
             const data = Array.isArray(apiData) ? apiData : apiData.data || [];
             const mapped = data.map((item: FavoriteItem) => ({
@@ -73,7 +86,7 @@ const FavoriteScreen = () => {
                 style: "destructive",
                 onPress: async () => {
                     try {
-                        const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/favorite/remove`, {
+                        const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.FAVORITE.REMOVE}`, {
                             method: "DELETE",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ user_id: user?.user_id, dish_id: food.id }),

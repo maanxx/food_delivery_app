@@ -21,6 +21,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import { ResponseType } from "expo-auth-session";
 import AsyncStorage from "@react-native-async-storage/async-storage"; // <-- added
+import API_CONFIG from "../configs/api";
 
 // Ensure redirect handling
 WebBrowser.maybeCompleteAuthSession();
@@ -55,7 +56,7 @@ const LoginScreen: React.FC = () => {
 
                 try {
                     // Gửi idToken về backend để verify / tạo session
-                    const res = await fetch("https://YOUR_BACKEND_URL/api/auth/google", {
+                    const res = await fetch(`${API_CONFIG.BASE_URL}/api/auth/google`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ idToken }),
@@ -63,7 +64,14 @@ const LoginScreen: React.FC = () => {
 
                     if (!res.ok) {
                         const errText = await res.text();
-                        throw new Error(errText || "Server error");
+                        throw new Error(errText || `Server error (${res.status})`);
+                    }
+
+                    const contentType = res.headers.get("content-type");
+                    if (!contentType || !contentType.includes("application/json")) {
+                        const text = await res.text();
+                        console.error("[LoginScreen] Google Auth non-JSON:", text.substring(0, 100));
+                        throw new Error("Server returned non-JSON response");
                     }
 
                     const data = await res.json();

@@ -9,8 +9,7 @@ class FoodApiClient {
     ): Promise<ApiResponse<T>> {
         try {
             const url = `${API_CONFIG.BASE_URL}${endpoint}`;
-            // Kiểm tra log này khi chạy app:
-            console.log("Food API Request:", url, method);
+            console.log(`[FoodApi] Requesting (${method}): ${url}`);
 
             const options: RequestInit = {
                 method,
@@ -24,20 +23,21 @@ class FoodApiClient {
             }
 
             const res = await fetch(url, options);
-            const text = await res.text();
             
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch {
-                throw new Error(text);
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const text = await res.text();
+                console.error(`[FoodApi] Non-JSON response from ${endpoint}:`, text.substring(0, 100));
+                throw new Error(`Server returned non-JSON response (${res.status})`);
             }
+
+            const responseData = await res.json();
 
             if (!res.ok) {
-                throw new Error(data?.message || "Request failed");
+                throw new Error(responseData?.message || `Request failed with status ${res.status}`);
             }
 
-            return data;
+            return responseData;
         } catch (error) {
             console.error("Food API Error:", error);
             return {
@@ -63,19 +63,19 @@ class FoodApiClient {
         if (params?.limit) queryParams.append("limit", params.limit.toString());
 
         const queryString = queryParams.toString();
-        const endpoint = `/api/foods${queryString ? `?${queryString}` : ""}`;
+        const endpoint = `${API_CONFIG.ENDPOINTS.FOOD.ALL}${queryString ? `?${queryString}` : ""}`;
 
         return this.makeRequest<FoodListResponse>(endpoint);
     }
 
     // Lấy thông tin chi tiết món ăn
     async getFoodById(id: string): Promise<ApiResponse<FoodWithDetails>> {
-        return this.makeRequest<FoodWithDetails>(`/api/foods/${id}`);
+        return this.makeRequest<FoodWithDetails>(`${API_CONFIG.ENDPOINTS.FOOD.ALL}/${id}`);
     }
 
     // Lấy danh sách categories
     async getCategories(): Promise<ApiResponse<Category[]>> {
-        return this.makeRequest<Category[]>("/api/categories");
+        return this.makeRequest<Category[]>(API_CONFIG.ENDPOINTS.FOOD.CATEGORIES);
     }
 
     // Lấy danh sách restaurants
@@ -93,7 +93,7 @@ class FoodApiClient {
         if (params?.limit) queryParams.append("limit", params.limit.toString());
 
         const queryString = queryParams.toString();
-        const endpoint = `/api/restaurants${queryString ? `?${queryString}` : ""}`;
+        const endpoint = `${API_CONFIG.ENDPOINTS.FOOD.RESTAURANTS}${queryString ? `?${queryString}` : ""}`;
 
         return this.makeRequest<Restaurant[]>(endpoint);
     }
@@ -116,7 +116,7 @@ class FoodApiClient {
         if (filters?.max_price) queryParams.append("max_price", filters.max_price.toString());
         if (filters?.rating) queryParams.append("rating", filters.rating.toString());
 
-        return this.makeRequest<FoodWithDetails[]>(`/api/foods/search?${queryParams.toString()}`);
+        return this.makeRequest<FoodWithDetails[]>(`${API_CONFIG.ENDPOINTS.FOOD.SEARCH}?${queryParams.toString()}`);
     }
 
     // Lấy món ăn theo category
@@ -132,19 +132,19 @@ class FoodApiClient {
         if (params?.limit) queryParams.append("limit", params.limit.toString());
 
         const queryString = queryParams.toString();
-        const endpoint = `/api/categories/${categoryId}/foods${queryString ? `?${queryString}` : ""}`;
+        const endpoint = `${API_CONFIG.ENDPOINTS.FOOD.CATEGORIES}/${categoryId}/foods${queryString ? `?${queryString}` : ""}`;
 
         return this.makeRequest<FoodWithDetails[]>(endpoint);
     }
 
     // Lấy món ăn nổi bật
     async getFeaturedFoods(limit: number = 10): Promise<ApiResponse<FoodWithDetails[]>> {
-        return this.makeRequest<FoodWithDetails[]>(`/api/foods/featured?limit=${limit}`);
+        return this.makeRequest<FoodWithDetails[]>(`${API_CONFIG.ENDPOINTS.FOOD.FEATURED}?limit=${limit}`);
     }
 
     // Lấy món ăn bán chạy
     async getPopularFoods(limit: number = 10): Promise<ApiResponse<FoodWithDetails[]>> {
-        return this.makeRequest<FoodWithDetails[]>(`/api/foods/popular?limit=${limit}`);
+        return this.makeRequest<FoodWithDetails[]>(`${API_CONFIG.ENDPOINTS.FOOD.POPULAR}?limit=${limit}`);
     }
 }
 

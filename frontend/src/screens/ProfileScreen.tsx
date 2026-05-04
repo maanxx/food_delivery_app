@@ -19,12 +19,14 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 
 import { useAuth } from "../contexts/AuthContext";
+import { useCart } from "../contexts/CartContext";
 import { AppColors } from "../assets/styles/AppColor";
 import { UpdateProfileData, ChangePasswordData } from "../types/auth";
 
 const ProfileScreen = () => {
     const router = useRouter();
     const { user, logout, updateProfile, changePassword, checkAuthStatus } = useAuth();
+    const { clearCart } = useCart();
     const [avatarUri, setAvatarUri] = useState<string | null>(user?.avatar_path || user?.avatar || null);
     const [avatarLoading, setAvatarLoading] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -178,18 +180,37 @@ const ProfileScreen = () => {
         }
     };
 
+
+
     const handleLogout = () => {
+        console.log("[ProfileScreen] Logout button clicked");
         Alert.alert("Đăng xuất", "Bạn có chắc chắn muốn đăng xuất?", [
             {
                 text: "Hủy",
+                onPress: () => console.log("[ProfileScreen] Logout cancelled"),
                 style: "cancel",
             },
             {
                 text: "Đăng xuất",
                 style: "destructive",
                 onPress: async () => {
-                    await logout();
-                    router.replace("/login");
+                    console.log("[ProfileScreen] Logout confirmed");
+                    try {
+                        // Clear cart state first
+                        console.log("[ProfileScreen] Clearing cart...");
+                        await clearCart();
+                        
+                        // Then perform logout cleanup (tokens, user, socket)
+                        console.log("[ProfileScreen] Calling auth logout...");
+                        await logout();
+                        
+                        // Redirect and reset navigation stack to prevent back button access
+                        console.log("[ProfileScreen] Redirecting to login...");
+                        router.replace("/login");
+                    } catch (error) {
+                        console.error("[ProfileScreen] Logout process error:", error);
+                        Alert.alert("Lỗi", "Có lỗi xảy ra khi đăng xuất");
+                    }
                 },
             },
         ]);

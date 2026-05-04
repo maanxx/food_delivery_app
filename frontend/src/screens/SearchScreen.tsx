@@ -20,6 +20,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppColors } from "../assets/styles/AppColor";
 import { useFood } from "../contexts/FoodContext";
 import { FoodWithDetails } from "../types/food";
+import API_CONFIG from "../configs/api";
 
 interface SearchHistory {
     id: string;
@@ -128,11 +129,19 @@ const SearchScreen = () => {
     const searchFoodByAI = async (text: string) => {
         setAiLoading(true);
         try {
-            const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/ai/describe-food`, {
+            const res = await fetch(`${API_CONFIG.BASE_URL}/api/ai/describe-food`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ query: text }),
             });
+
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const textResult = await res.text();
+                console.error("[SearchScreen] Expected JSON but got:", textResult.substring(0, 100));
+                throw new Error("Server error");
+            }
+
             const data = await res.json();
             setAiDescription(data.description);
         } catch (err) {

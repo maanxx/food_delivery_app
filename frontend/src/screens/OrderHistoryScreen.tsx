@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../contexts/AuthContext";
 import { MaterialIcons } from "@expo/vector-icons";
 import { AppColors } from "../assets/styles/AppColor";
+import API_CONFIG from "../configs/api";
 interface OrderItem {
     id: string;
     name: string;
@@ -58,7 +59,19 @@ const OrderHistoryScreen = () => {
     const loadOrders = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/invoice/${user?.user_id}`);
+            const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.INVOICE.USER_INVOICES}/${user?.user_id}`);
+            
+            if (!res.ok) {
+                throw new Error(`Failed to load invoices: ${res.status}`);
+            }
+
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const text = await res.text();
+                console.error("[OrderHistoryScreen] Expected JSON but got:", text.substring(0, 100));
+                throw new Error("Server returned non-JSON response");
+            }
+
             const text = await res.text();
             let apiData = null;
             try {
@@ -75,7 +88,7 @@ const OrderHistoryScreen = () => {
                     let items = [];
                     try {
                         const itemsRes = await fetch(
-                            `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/invoice-items/${item.invoice_id}/items`,
+                            `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.INVOICE.ITEMS}/${item.invoice_id}/items`,
                         );
                         const itemsJson = await itemsRes.json();
                         items = Array.isArray(itemsJson.data) ? itemsJson.data : [];

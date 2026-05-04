@@ -98,6 +98,12 @@ class ApiClient {
                 body: JSON.stringify({ refreshToken }),
             });
 
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                console.error("[Api] Refresh token failed: Server returned non-JSON response");
+                return false;
+            }
+
             const data: ApiResponse<{ tokens: AuthTokens }> = await response.json();
 
             if (data.success && data.data?.tokens) {
@@ -146,6 +152,17 @@ class ApiClient {
                         });
                     }
                 }
+            }
+
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const text = await response.text();
+                console.error(`[Api] Non-JSON response from ${endpoint}:`, text.substring(0, 100));
+                return {
+                    success: false,
+                    message: `Server error (${response.status})`,
+                    errors: ["Server returned non-JSON response"],
+                };
             }
 
             const data: ApiResponse<T> = await response.json();

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useAuth } from "./AuthContext";
+import API_CONFIG from "../configs/api";
 
 export interface Address {
     id: string;
@@ -54,7 +55,7 @@ export const AddressProvider: React.FC<AddressProviderProps> = ({ children }) =>
         setError(null);
 
         try {
-            const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/addresses/user/${user.user_id}`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.ADDRESS.USER_ADDRESSES}/${user.user_id}`, {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
@@ -62,7 +63,15 @@ export const AddressProvider: React.FC<AddressProviderProps> = ({ children }) =>
             });
 
             if (!response.ok) {
-                throw new Error("Failed to load addresses");
+                const text = await response.text();
+                throw new Error(`Failed to load addresses: ${response.status}`);
+            }
+
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const text = await response.text();
+                console.error("[AddressContext] Expected JSON but got:", text.substring(0, 100));
+                throw new Error("Server returned non-JSON response");
             }
 
             const data = await response.json();
@@ -87,7 +96,7 @@ export const AddressProvider: React.FC<AddressProviderProps> = ({ children }) =>
         }
 
         try {
-            const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/addresses`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.ADDRESS.BASE}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -115,7 +124,7 @@ export const AddressProvider: React.FC<AddressProviderProps> = ({ children }) =>
 
     const updateAddress = async (id: string, addressData: Partial<Address>) => {
         try {
-            const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/addresses/${id}`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.ADDRESS.BASE}/${id}`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
@@ -136,7 +145,7 @@ export const AddressProvider: React.FC<AddressProviderProps> = ({ children }) =>
 
     const deleteAddress = async (id: string) => {
         try {
-            const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/addresses/${id}`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.ADDRESS.BASE}/${id}`, {
                 method: "DELETE",
             });
 
@@ -153,7 +162,7 @@ export const AddressProvider: React.FC<AddressProviderProps> = ({ children }) =>
 
     const setDefaultAddress = async (id: string) => {
         try {
-            const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/addresses/${id}/default`, {
+            const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.ADDRESS.BASE}/${id}/default`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
@@ -174,6 +183,11 @@ export const AddressProvider: React.FC<AddressProviderProps> = ({ children }) =>
     useEffect(() => {
         if (user) {
             loadAddresses();
+        } else {
+            // Clear addresses when user logs out
+            setAddresses([]);
+            setSelectedAddress(null);
+            console.log("[AddressContext] Addresses cleared on logout");
         }
     }, [user]);
 

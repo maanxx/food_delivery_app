@@ -171,12 +171,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     const logout = async (): Promise<void> => {
+        console.log("[AuthContext] Logout initiated");
         try {
             await apiClient.logout();
+            console.log("[AuthContext] API logout successful (storage cleared)");
         } catch (error) {
-            console.error("Logout error:", error);
+            console.error("[AuthContext] Logout error:", error);
         } finally {
+            // Disconnect socket on logout to clear session and prevent leaks
+            const socketService = require("../services/socketService").default;
+            if (socketService) {
+                console.log("[AuthContext] Disconnecting socket");
+                socketService.disconnect();
+            }
             dispatch({ type: "AUTH_LOGOUT" });
+            console.log("[AuthContext] Logout state dispatched");
         }
     };
 

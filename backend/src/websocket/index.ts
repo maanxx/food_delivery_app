@@ -154,3 +154,45 @@ export const emitConversationUpdated = (
         }
     }
 };
+
+/**
+ * Emits message_deleted to the conversation room.
+ */
+export const emitMessageDeleted = (
+    io: SocketIOServer,
+    conversationId: string,
+    messageId: string,
+    deletedForEveryone: boolean,
+    userId: string
+) => {
+    const roomName = `conversation_${conversationId}`;
+    const payload = {
+        conversationId,
+        messageId,
+        deletedForEveryone,
+        userId, // who deleted it
+        timestamp: new Date().toISOString(),
+    };
+
+    console.log(`[WS] Emitting message_deleted to room ${roomName}`, payload);
+    io.to(roomName).emit("message_deleted", payload);
+};
+
+/**
+ * Emits message_recalled to the conversation room.
+ */
+export const emitMessageRecalled = (
+    io: SocketIOServer,
+    conversationId: string,
+    messageId: string
+) => {
+    const roomName = `conversation_${conversationId}`;
+    const payload = {
+        conversationId,
+        messageId,
+        timestamp: new Date().toISOString(),
+    };
+
+    console.log(`[WS] Emitting message_recalled to room ${roomName}`, payload);
+    io.to(roomName).emit("message_recalled", payload);
+};

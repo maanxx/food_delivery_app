@@ -6,6 +6,7 @@ import { AppColors } from "../assets/styles/AppColor";
 import { CartItem, useCart } from "../contexts/CartContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useAddress } from "../contexts/AddressContext";
+import API_CONFIG from "../configs/api";
 
 const CheckoutScreen = () => {
     const [showAllAddresses, setShowAllAddresses] = useState(false);
@@ -34,7 +35,7 @@ const CheckoutScreen = () => {
     const handlePlaceOrder = async () => {
         setIsPlacingOrder(true);
         try {
-            const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/invoice/create`, {
+            const res = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.INVOICE.CREATE}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -45,6 +46,14 @@ const CheckoutScreen = () => {
                     payment_method: paymentMethod,
                 }),
             });
+
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const text = await res.text();
+                console.error("[CheckoutScreen] Expected JSON but got:", text.substring(0, 100));
+                throw new Error(`Server error (${res.status})`);
+            }
+
             const result = await res.json();
             if (result && result.data?.invoice_id) {
                 await clearCart();

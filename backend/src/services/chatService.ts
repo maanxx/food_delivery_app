@@ -16,7 +16,7 @@ const toCamelCase = (obj: any): any => {
                 const camelKey = key.replace(/([-_][a-z])/ig, ($1) => {
                     return $1.toUpperCase().replace('-', '').replace('_', '');
                 });
-                result[camelKey as keyof typeof result] = toCamelCase(obj[key]);
+                result[camelKey] = toCamelCase(obj[key]);
                 return result;
             }, {} as any);
         }
@@ -27,82 +27,46 @@ const toCamelCase = (obj: any): any => {
 export class ChatService {
     static async getOrCreateDirectConversation(userId: string, participantId: string) {
         try {
-            const userConversations = await ConversationParticipantModel.findConversationsForUser(userId);
-            const items = userConversations.items || [];
-
-            for (const conv of items) {
-                const convData = await ConversationModel.findById(conv.conversation_id);
-                if (!convData || convData.is_active === false) continue;
-
-                if (convData.type === "1to1") {
-                    const members = await ConversationParticipantModel.findMembersOfConversation(conv.conversation_id) || [];
-                    if (members.length === 2 && members.some((m: any) => m.user_id === participantId)) {
-                        return toCamelCase(convData);
-                    }
-                }
+            if (userId === participantId) {
+                throw new Error("Cannot create a conversation with yourself");
             }
 
-            const participantData = await UserModel.findById(participantId);
-            if (!participantData) {
-                throw new Error("Participant not found");
+            const existingConversation = await ConversationModel.findDirectConversation(userId, participantId);
+            if (existingConversation) {
+                const isMember = await ConversationParticipantModel.isMember(existingConversation.conversation_id, userId);
+                if (!isMember) {
+                    await ConversationParticipantModel.addParticipant(existingConversation.conversation_id, userId, "member");
+                }
+                
+                const otherMemberIsMember = await ConversationParticipantModel.isMember(existingConversation.conversation_id, participantId);
+                if (!otherMemberIsMember) {
+                    await ConversationParticipantModel.addParticipant(existingConversation.conversation_id, participantId, "member");
+                }
+
+                await ConversationParticipantModel.restoreConversation(existingConversation.conversation_id, userId);
+
+                const otherUser = await UserModel.findById(participantId);
+                return toCamelCase({
+                    ...existingConversation,
+                    name: otherUser?.fullname || otherUser?.username || "Unknown",
+                    avatarPath: otherUser?.avatar || otherUser?.avatar_path || null,
+                });
             }
 
             const newConversation = await ConversationModel.create({
                 type: "1to1",
-                name: participantData.fullname || participantData.username || participantData.email,
-                avatar_path: participantData.avatar || participantData.avatar_path,
-                created_by: userId,
+                creator_id: userId,
             });
 
-            await ConversationParticipantModel.create({
-                conversation_id: newConversation.conversation_id,
-                user_id: userId,
-                role: "member",
+            await ConversationParticipantModel.addParticipant(newConversation.conversation_id, userId, "admin");
+            await ConversationParticipantModel.addParticipant(newConversation.conversation_id, participantId, "member");
+
+            const otherUser = await UserModel.findById(participantId);
+            return toCamelCase({
+                ...newConversation,
+                name: otherUser?.fullname || otherUser?.username || "Unknown",
+                avatarPath: otherUser?.avatar || otherUser?.avatar_path || null,
             });
-
-            await ConversationParticipantModel.create({
-                conversation_id: newConversation.conversation_id,
-                user_id: participantId,
-                role: "member",
-            });
-
-            return toCamelCase(newConversation);
-        } catch (error) {
-            throw error;
-        }
-    }
-
-    static async createGroupConversation(userId: string, name: string, participantIds: string[], avatarPath = null) {
-        try {
-            if (!participantIds.includes(userId)) {
-                participantIds.push(userId);
-            }
-
-            const newConversation = await ConversationModel.create({
-                type: "group",
-                name,
-                avatar_path: avatarPath,
-                created_by: userId,
-                description: null,
-            });
-
-            for (const participantId of participantIds) {
-                const role = participantId === userId ? "admin" : "member";
-                await ConversationParticipantModel.create({
-                    conversation_id: newConversation.conversation_id,
-                    user_id: participantId,
-                    role,
-                });
-            }
-
-            await MessageModel.create({
-                conversation_id: newConversation.conversation_id,
-                sender_id: userId,
-                content: `Created group "${name}"`,
-                type: "system",
-            });
-
-            return toCamelCase(newConversation);
         } catch (error) {
             throw error;
         }
@@ -110,28 +74,37 @@ export class ChatService {
 
     static async getUserConversations(userId: string, limit = 20, cursor = null) {
         try {
-            const result = await ConversationParticipantModel.findConversationsForUser(userId, limit, cursor);
-            const items = result.items || [];
-
+            const result = await ConversationParticipantModel.findByUserId(userId, limit, cursor);
             const conversations = [];
-            for (const participant of items) {
-                const conversation = await ConversationModel.findById(participant.conversation_id);
-                if (conversation && conversation.is_active !== false && !participant.deleted_at) {
-                    let convData: any = {
+
+            if (result.items) {
+                for (const participant of result.items) {
+                    const conversation = await ConversationModel.findById(participant.conversation_id);
+                    if (!conversation || conversation.is_active === false) continue;
+
+                    const convData: any = {
                         ...conversation,
-                        unreadCount: participant.unread_count,
-                        isMuted: participant.is_muted,
-                        isPinned: participant.is_pinned,
-                        lastReadAt: participant.last_read_at,
+                        unreadCount: participant.unread_count || 0,
+                        role: participant.role,
+                        joinedAt: participant.joined_at,
                     };
 
                     if (conversation.last_message_id) {
                         const lastMessage = await MessageModel.findById(participant.conversation_id, conversation.last_message_id);
                         if (lastMessage) {
                             const sender = await UserModel.findById(lastMessage.sender_id);
+                            
+                            // Check if last message was deleted/recalled
+                            let content = lastMessage.content;
+                            if (lastMessage.is_recalled) {
+                                content = "This message was recalled";
+                            } else if (lastMessage.is_deleted) {
+                                content = "This message was deleted";
+                            }
+
                             convData.lastMessage = {
                                 messageId: lastMessage.message_id,
-                                content: lastMessage.content,
+                                content: content,
                                 type: lastMessage.type,
                                 senderName: sender?.fullname || sender?.username || "Unknown User",
                                 senderAvatar: sender?.avatar || sender?.avatar_path || null,
@@ -317,6 +290,59 @@ export class ChatService {
             }
 
             await ConversationParticipantModel.markAsRead(conversationId, userId);
+            return { success: true };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    static async deleteMessageForMe(userId: string, conversationId: string, messageId: string) {
+        try {
+            const message = await MessageModel.findById(conversationId, messageId);
+            if (!message) throw new Error("Message not found");
+
+            await MessageModel.deleteMessageForUser(conversationId, messageId, userId);
+            return { success: true };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    static async deleteMessageForEveryone(userId: string, conversationId: string, messageId: string) {
+        try {
+            const message = await MessageModel.findById(conversationId, messageId);
+            if (!message) throw new Error("Message not found");
+
+            if (message.sender_id !== userId) {
+                throw new Error("Only the sender can delete a message for everyone");
+            }
+
+            await MessageModel.delete(conversationId, messageId);
+            return { success: true };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    static async recallMessage(userId: string, conversationId: string, messageId: string) {
+        try {
+            const message = await MessageModel.findById(conversationId, messageId);
+            if (!message) throw new Error("Message not found");
+
+            if (message.sender_id !== userId) {
+                throw new Error("Only the sender can recall a message");
+            }
+
+            // Check time limit (5 minutes)
+            const createdAt = new Date(message.created_at).getTime();
+            const now = new Date().getTime();
+            const diffMinutes = (now - createdAt) / (1000 * 60);
+
+            if (diffMinutes > 5) {
+                throw new Error("Messages can only be recalled within 5 minutes");
+            }
+
+            await MessageModel.recall(conversationId, messageId);
             return { success: true };
         } catch (error) {
             throw error;

@@ -28,4 +28,10 @@ router.put("/:conversationId/messages/read", authMiddleware, ChatController.mark
 // Mark conversation as read
 router.put("/:conversationId/read", authMiddleware, ChatController.markConversationAsRead);
 
+// Delete message
+router.delete("/:conversationId/messages/:messageId", authMiddleware, ChatController.deleteMessage);
+
+// Recall message
+router.post("/:conversationId/messages/:messageId/recall", authMiddleware, ChatController.recallMessage);
+
 export default router;

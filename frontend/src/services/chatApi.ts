@@ -18,42 +18,55 @@ class ChatApi {
             headers.Authorization = `Bearer ${token}`;
         }
 
+        console.log(`[ChatApi] Requesting: ${API_CONFIG.BASE_URL}${endpoint}`);
         const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
             ...options,
             headers,
         });
 
+        // Handle 204 No Content
+        if (response.status === 204) {
+            return { success: true };
+        }
+
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            const text = await response.text();
+            console.error(`[ChatApi] Non-JSON response from ${endpoint}:`, text.substring(0, 100));
+            throw new Error(`Server returned non-JSON response (${response.status})`);
+        }
+
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.message || "Something went wrong");
+            throw new Error(data.message || `Request failed with status ${response.status}`);
         }
 
         return data.data;
     }
 
     async getConversations(limit = 20, cursor?: string) {
-        let url = `/api/conversations?limit=${limit}`;
+        let url = `${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}?limit=${limit}`;
         if (cursor) url += `&cursor=${cursor}`;
         return this.fetchWithAuth(url);
     }
 
     async getOrCreateDirectConversation(participantId: string) {
-        return this.fetchWithAuth(`/api/conversations`, {
+        return this.fetchWithAuth(API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS, {
             method: "POST",
             body: JSON.stringify({ participantId }),
         });
     }
 
     async getMessages(conversationId: string, limit = 50, cursor?: string) {
-        return this.fetchWithAuth(`/api/conversations/messages`, {
+        return this.fetchWithAuth(API_CONFIG.ENDPOINTS.CHAT.MESSAGES, {
             method: "POST",
             body: JSON.stringify({ conversationId, limit, cursor }),
         });
     }
 
     async sendMessage(conversationId: string, content: string, type = "text", metadata?: any) {
-        return this.fetchWithAuth(`/api/conversations/${conversationId}/messages`, {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages`, {
             method: "POST",
             body: JSON.stringify({ content, type, ...metadata }),
         });
@@ -64,21 +77,34 @@ class ChatApi {
     }
 
     async uploadFile(formData: FormData) {
-        return this.fetchWithAuth(`/api/upload`, {
+        return this.fetchWithAuth(API_CONFIG.ENDPOINTS.CHAT.UPLOAD, {
             method: "POST",
             body: formData,
         });
     }
 
     async markMessagesAsRead(conversationId: string, messageIds: string[]) {
-        return this.fetchWithAuth(`/api/conversations/${conversationId}/messages/read`, {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/read`, {
             method: "PUT",
             body: JSON.stringify({ messageIds }),
         });
     }
 
     async getAvailableUsers() {
-        return this.fetchWithAuth(`/api/auth/users`);
+        return this.fetchWithAuth(API_CONFIG.ENDPOINTS.AUTH.USERS);
+    }
+
+    async deleteMessage(conversationId: string, messageId: string, forEveryone = false) {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/${messageId}`, {
+            method: "DELETE",
+            body: JSON.stringify({ forEveryone }),
+        });
+    }
+
+    async recallMessage(conversationId: string, messageId: string) {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/${messageId}/recall`, {
+            method: "POST",
+        });
     }
 }
 
