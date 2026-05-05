@@ -98,7 +98,7 @@ export class ChatService {
                             let content = lastMessage.content;
                             if (lastMessage.is_recalled) {
                                 content = "This message was recalled";
-                            } else if (lastMessage.is_deleted) {
+                            } else if (lastMessage.deleted_for_everyone) {
                                 content = "This message was deleted";
                             }
 
@@ -121,6 +121,9 @@ export class ChatService {
                             convData.name = otherUser?.fullname || otherUser?.username || "Unknown";
                             convData.avatar_path = otherUser?.avatar || otherUser?.avatar_path || null;
                         }
+                    } else if (conversation.type === "group") {
+                        convData.name = conversation.name || "Unnamed Group";
+                        convData.avatar_path = conversation.avatar_path || null;
                     }
 
                     conversations.push(toCamelCase(convData));
@@ -317,7 +320,7 @@ export class ChatService {
                 throw new Error("Only the sender can delete a message for everyone");
             }
 
-            await MessageModel.delete(conversationId, messageId);
+            await MessageModel.deleteForEveryone(conversationId, messageId);
             return { success: true };
         } catch (error) {
             throw error;

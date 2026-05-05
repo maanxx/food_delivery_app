@@ -156,26 +156,42 @@ export const emitConversationUpdated = (
 };
 
 /**
- * Emits message_deleted to the conversation room.
+ * Emits message_deleted_for_me to a specific user's personal room.
  */
-export const emitMessageDeleted = (
+export const emitMessageDeletedForMe = (
     io: SocketIOServer,
     conversationId: string,
     messageId: string,
-    deletedForEveryone: boolean,
     userId: string
+) => {
+    const userRoom = `user:${userId}`;
+    const payload = {
+        conversationId,
+        messageId,
+        timestamp: new Date().toISOString(),
+    };
+
+    console.log(`[WS] Emitting message_deleted_for_me to user room ${userRoom}`, payload);
+    io.to(userRoom).emit("message_deleted_for_me", payload);
+};
+
+/**
+ * Emits message_deleted_for_everyone to the conversation room.
+ */
+export const emitMessageDeletedForEveryone = (
+    io: SocketIOServer,
+    conversationId: string,
+    messageId: string
 ) => {
     const roomName = `conversation_${conversationId}`;
     const payload = {
         conversationId,
         messageId,
-        deletedForEveryone,
-        userId, // who deleted it
         timestamp: new Date().toISOString(),
     };
 
-    console.log(`[WS] Emitting message_deleted to room ${roomName}`, payload);
-    io.to(roomName).emit("message_deleted", payload);
+    console.log(`[WS] Emitting message_deleted_for_everyone to room ${roomName}`, payload);
+    io.to(roomName).emit("message_deleted_for_everyone", payload);
 };
 
 /**

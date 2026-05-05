@@ -13,6 +13,7 @@ const invoice_1 = __importDefault(require("./invoice"));
 const invoiceItems_1 = __importDefault(require("./invoiceItems"));
 const groqAI_1 = __importDefault(require("./groqAI"));
 const chat_1 = __importDefault(require("./chat"));
+const messageRoutes_1 = __importDefault(require("./messageRoutes"));
 const upload_1 = __importDefault(require("./upload"));
 const express_1 = __importDefault(require("express"));
 const path_1 = __importDefault(require("path"));
@@ -43,7 +44,24 @@ const routes = (app) => {
     app.use("/api/ai", groqAI_1.default);
     // Chat routes
     app.use("/api/conversations", chat_1.default);
+    // Specific message action routes (Feature 5)
+    app.use("/api/messages", messageRoutes_1.default);
     // Upload routes
     app.use("/api/upload", upload_1.default);
+    // Verify registered routes
+    console.log("Registered Routes:");
+    app._router.stack.forEach((r) => {
+        if (r.route && r.route.path) {
+            console.log(`- ${Object.keys(r.route.methods).join(",").toUpperCase()} ${r.route.path}`);
+        }
+        else if (r.name === "router") {
+            r.handle.stack.forEach((handler) => {
+                if (handler.route) {
+                    const methods = Object.keys(handler.route.methods).join(",").toUpperCase();
+                    console.log(`- ${methods} ${handler.route.path}`);
+                }
+            });
+        }
+    });
 };
 exports.default = routes;

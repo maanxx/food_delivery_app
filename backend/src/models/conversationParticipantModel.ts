@@ -206,6 +206,18 @@ export class ConversationParticipantModel {
         return result.Attributes;
     }
 
+    static async addParticipant(conversationId: string, userId: string, role = "member") {
+        return this.create({
+            conversation_id: conversationId,
+            user_id: userId,
+            role,
+        });
+    }
+
+    static async findByUserId(userId: string, limit = 20, lastEvaluatedKey: any = null) {
+        return this.findConversationsForUser(userId, limit, lastEvaluatedKey);
+    }
+
     static async getDeletedAt(conversationId: string, userId: string) {
         const params = {
             TableName: TABLE_NAME,
@@ -217,5 +229,40 @@ export class ConversationParticipantModel {
 
         const result = await dynamodb.get(params).promise();
         return result.Item?.deleted_at || null;
+    }
+
+    static async findByUserIdAndConvId(userId: string, conversationId: string) {
+        const params = {
+            TableName: TABLE_NAME,
+            Key: {
+                conversation_id: conversationId,
+                user_id: userId,
+            },
+        };
+
+        const result = await dynamodb.get(params).promise();
+        return result.Item || null;
+    }
+
+    static async updateRole(conversationId: string, userId: string, role: string) {
+        const params = {
+            TableName: TABLE_NAME,
+            Key: {
+                conversation_id: conversationId,
+                user_id: userId,
+            },
+            UpdateExpression: "SET #role = :role, updated_at = :updatedAt",
+            ExpressionAttributeNames: {
+                "#role": "role",
+            },
+            ExpressionAttributeValues: {
+                ":role": role,
+                ":updatedAt": new Date().toISOString(),
+            },
+            ReturnValues: "ALL_NEW",
+        };
+
+        const result = await dynamodb.update(params).promise();
+        return result.Attributes;
     }
 }

@@ -13,7 +13,7 @@ const dbConfig = {
     password: process.env.DB_PASSWORD || "noobanecon",
     database: process.env.DB_NAME || "eatsy_food",
     port: parseInt(process.env.DB_PORT || "3306"),
-    ssl: false,
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
     connectionLimit: 10,
     acquireTimeout: 60000,
     timeout: 60000,

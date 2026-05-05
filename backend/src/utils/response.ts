@@ -36,10 +36,20 @@ export class ResponseUtils {
     static error(
         res: Response,
         message: string = "Internal Server Error",
-        errors?: string[],
+        errorsOrStatusCode?: string[] | number,
         statusCode: number = 500,
         data?: unknown,
     ): Response<ApiResponse> {
+        let errors: string[] | undefined;
+        let finalStatusCode = statusCode;
+
+        if (typeof errorsOrStatusCode === "number") {
+            finalStatusCode = errorsOrStatusCode;
+            errors = undefined;
+        } else {
+            errors = errorsOrStatusCode;
+        }
+
         const response: ApiResponse = {
             success: false,
             message,
@@ -50,7 +60,7 @@ export class ResponseUtils {
             },
         };
 
-        return res.status(statusCode).json(response);
+        return res.status(finalStatusCode).json(response);
     }
 
     // Validation error response

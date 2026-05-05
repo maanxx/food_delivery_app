@@ -12,7 +12,10 @@ import {
     SafeAreaView, 
     ActivityIndicator,
     Modal,
-    Dimensions
+    Dimensions,
+    Alert,
+    Clipboard,
+    Linking
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -23,6 +26,18 @@ import EmojiSelector, { Categories } from "react-native-emoji-selector";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { Video, ResizeMode } from "expo-av";
+import API_CONFIG from "../../src/configs/api";
+import dynamic from "next/dynamic";
+
+// Web Emoji Picker
+let WebEmojiPicker: any = null;
+if (Platform.OS === "web") {
+    try {
+        WebEmojiPicker = require("emoji-picker-react").default || require("emoji-picker-react");
+    } catch (e) {
+        console.warn("emoji-picker-react not loaded", e);
+    }
+}
 
 const { width } = Dimensions.get("window");
 
@@ -41,6 +56,13 @@ const ChatDetailScreen = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
     const [fullScreenMedia, setFullScreenMedia] = useState<any | null>(null);
+    const [selectedMessage, setSelectedMessage] = useState<any | null>(null);
+    const [showMessageActions, setShowMessageActions] = useState(false);
+    const [pendingMedia, setPendingMedia] = useState<any[]>([]);
+    const [showPreviewModal, setShowPreviewModal] = useState(false);
+    const [conversation, setConversation] = useState<any>(null);
+    const [showForwardModal, setShowForwardModal] = useState(false);
+    const [conversations, setConversations] = useState<any[]>([]);
     const flatListRef = useRef<FlatList>(null);
 
     useEffect(() => {
@@ -56,23 +78,27 @@ const ChatDetailScreen = () => {
         fetchUserId();
     }, []);
 
-    // Load message history when conversationId is available
+    // Load message history and conversation details
     useEffect(() => {
         if (!conversationId) {
             console.warn("[ChatDetail] No conversationId provided");
             return;
         }
-        const loadMessages = async () => {
+        const loadData = async () => {
             try {
-                console.log("[ChatDetail] Fetching messages for:", conversationId);
-                const data = await ChatApi.getMessages(conversationId);
-                console.log("[ChatDetail] Messages received:", data.messages?.length || 0);
-                setMessages(data.messages || []);
+                console.log("[ChatDetail] Fetching data for:", conversationId);
+                const [msgData, convDetails] = await Promise.all([
+                    ChatApi.getMessages(conversationId),
+                    ChatApi.getConversationDetails(conversationId)
+                ]);
+                
+                setMessages(msgData.messages || []);
+                setConversation(convDetails);
             } catch (error) {
-                console.error("[ChatDetail] Failed to load messages:", error);
+                console.error("[ChatDetail] Failed to load data:", error);
             }
         };
-        loadMessages();
+        loadData();
     }, [conversationId]);
 
     // Socket connection & real-time listener lifecycle
@@ -98,22 +124,51 @@ const ChatDetailScreen = () => {
             }
         };
 
+        const handleMessageDeletedForMe = (data: any) => {
+            if (data.conversationId === conversationId) {
+                setMessages((prev) => prev.filter((m) => m.messageId !== data.messageId));
+            }
+        };
+
+        const handleMessageDeletedForEveryone = (data: any) => {
+            if (data.conversationId === conversationId) {
+                setMessages((prev) => 
+                    prev.map((m) => m.messageId === data.messageId ? { ...m, deletedForEveryone: true, content: "" } : m)
+                );
+            }
+        };
+
+        const handleMessageRecalled = (data: any) => {
+            if (data.conversationId === conversationId) {
+                setMessages((prev) => 
+                    prev.map((m) => m.messageId === data.messageId ? { ...m, isRecalled: true, content: "" } : m)
+                );
+            }
+        };
+
         const initSocket = async () => {
             console.log("[ChatDetail] Connecting socket and joining room:", conversationId);
             await SocketService.connect();
             if (!isMounted) return;
             SocketService.joinConversation(conversationId);
             SocketService.on("new_message", handleNewMessage);
-            console.log("[ChatDetail] Socket listener registered for new_message");
+            SocketService.on("message_deleted_for_me", handleMessageDeletedForMe);
+            SocketService.on("message_deleted_for_everyone", handleMessageDeletedForEveryone);
+            SocketService.on("message_recalled", handleMessageRecalled);
+
+            console.log("[ChatDetail] Socket listener registered for events");
         };
 
         initSocket();
 
         return () => {
             isMounted = false;
-            console.log("[ChatDetail] Cleanup: leaving room and removing listener");
+            console.log("[ChatDetail] Cleanup: leaving room and removing listeners");
             SocketService.leaveConversation(conversationId);
             SocketService.off("new_message", handleNewMessage);
+            SocketService.off("message_deleted_for_me", handleMessageDeletedForMe);
+            SocketService.off("message_deleted_for_everyone", handleMessageDeletedForEveryone);
+            SocketService.off("message_recalled", handleMessageRecalled);
         };
     }, [conversationId]); // ← removed userId from deps: use userIdRef.current inside instead
 
@@ -137,12 +192,13 @@ const ChatDetailScreen = () => {
         setShowAttachmentMenu(false);
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.All,
-            allowsEditing: false,
+            allowsMultipleSelection: true,
             quality: 1,
         });
 
         if (!result.canceled) {
-            uploadFile(result.assets[0]);
+            setPendingMedia(result.assets);
+            setShowPreviewModal(true);
         }
     };
 
@@ -179,36 +235,103 @@ const ChatDetailScreen = () => {
         }
     };
 
-    const uploadFile = async (fileAsset: any) => {
+    const uploadFiles = async () => {
+        if (pendingMedia.length === 0) return;
+        
+        setShowPreviewModal(false);
         setIsUploading(true);
+        
         try {
-            const formData = new FormData();
-            const fileName = fileAsset.name || fileAsset.fileName || `upload_${Date.now()}`;
-            const fileType = fileAsset.mimeType || fileAsset.type || "application/octet-stream";
+            const uploadedAttachments = [];
             
-            formData.append("file", {
-                uri: fileAsset.uri,
-                name: fileName,
-                type: fileType,
-            } as any);
+            for (const asset of pendingMedia) {
+                const formData = new FormData();
+                const fileName = asset.name || asset.fileName || `upload_${Date.now()}`;
+                const fileType = asset.mimeType || asset.type || "application/octet-stream";
+                
+                formData.append("file", {
+                    uri: asset.uri,
+                    name: fileName,
+                    type: fileType,
+                } as any);
 
-            const uploadData = await ChatApi.uploadFile(formData);
+                const uploadData = await ChatApi.uploadFile(formData);
+                uploadedAttachments.push({
+                    ...uploadData,
+                    type: fileType.startsWith("image") ? "image" : fileType.startsWith("video") ? "video" : "file"
+                });
+            }
             
-            // Determine message type
+            // Determine combined message type
+            const hasVideo = uploadedAttachments.some(a => a.type === "video");
+            const hasImage = uploadedAttachments.some(a => a.type === "image");
             let msgType = "file";
-            if (fileType.startsWith("image")) msgType = "image";
-            else if (fileType.startsWith("video")) msgType = "video";
+            if (hasVideo) msgType = "video";
+            else if (hasImage) msgType = "image";
 
-            await handleSend("", msgType, [uploadData], {
-                fileName: uploadData.filename,
-                fileSize: uploadData.size,
-                mimetype: uploadData.mimetype
-            });
+            await handleSend("", msgType, uploadedAttachments);
+            setPendingMedia([]);
         } catch (error) {
             console.error("Upload failed:", error);
-            alert("Failed to upload file");
+            alert("Failed to upload one or more files");
         } finally {
             setIsUploading(false);
+        }
+    };
+
+    const uploadFile = async (fileAsset: any) => {
+        setPendingMedia([fileAsset]);
+        setShowPreviewModal(true);
+    };
+
+    const handleMessageLongPress = (message: any) => {
+        console.log("[Chat] Long press triggered on message:", message.messageId);
+        if (message.isRecalled || message.deletedForEveryone) {
+            console.log("[Chat] Skipping long press for recalled/deleted message");
+            return;
+        }
+        setSelectedMessage(message);
+        setShowMessageActions(true);
+        console.log("[Chat] showMessageActions set to true");
+    };
+
+    const handleMessageAction = async (action: string) => {
+        console.log("[Chat] Action selected:", action, "for message:", selectedMessage?.messageId);
+        if (!selectedMessage) return;
+        setShowMessageActions(false);
+
+        try {
+            switch (action) {
+                case "delete_me":
+                    await ChatApi.deleteMessage(conversationId, selectedMessage.messageId, false);
+                    setMessages((prev) => prev.filter((m) => m.messageId !== selectedMessage.messageId));
+                    break;
+                case "delete_everyone":
+                    await ChatApi.deleteMessage(conversationId, selectedMessage.messageId, true);
+                    // Socket will handle update, but let's update locally for immediate feedback
+                    setMessages((prev) => 
+                        prev.map((m) => m.messageId === selectedMessage.messageId ? { ...m, deletedForEveryone: true, content: "" } : m)
+                    );
+                    break;
+                case "recall":
+                    await ChatApi.recallMessage(selectedMessage.messageId, conversationId);
+                    setMessages((prev) => 
+                        prev.map((m) => m.messageId === selectedMessage.messageId ? { ...m, isRecalled: true, content: "" } : m)
+                    );
+                    break;
+                case "copy":
+                    Clipboard.setString(selectedMessage.content || "");
+                    break;
+                case "forward":
+                    const convData = await ChatApi.getConversations();
+                    setConversations(convData.conversations || []);
+                    setShowForwardModal(true);
+                    break;
+            }
+        } catch (error: any) {
+            Alert.alert("Lỗi", error.message || "Không thể thực hiện hành động");
+        } finally {
+            setSelectedMessage(null);
         }
     };
 
@@ -217,73 +340,113 @@ const ChatDetailScreen = () => {
         const time = new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
         const renderAttachment = () => {
-            const attachment = item.metadata?.attachments?.[0] || item.attachments?.[0];
-            if (!attachment) return null;
+            const attachments = item.metadata?.attachments || item.attachments || [];
+            if (attachments.length === 0) return null;
 
-            const fullUrl = `${API_CONFIG.BASE_URL}${attachment.url}`;
+            return (
+                <View style={styles.attachmentsGrid}>
+                    {attachments.map((attachment: any, index: number) => {
+                        const fullUrl = `${API_CONFIG.BASE_URL}${attachment.url}`;
+                        const type = attachment.type || (attachment.mimetype?.startsWith("image") ? "image" : attachment.mimetype?.startsWith("video") ? "video" : "file");
 
-            if (item.type === "image") {
-                return (
-                    <TouchableOpacity onPress={() => setFullScreenMedia({ type: "image", url: fullUrl })}>
-                        <Image 
-                            source={{ uri: fullUrl }} 
-                            style={styles.messageImage} 
-                            resizeMode="cover" 
-                        />
-                    </TouchableOpacity>
-                );
-            }
+                        if (type === "image") {
+                            return (
+                                <TouchableOpacity 
+                                    key={index}
+                                    onPress={() => setFullScreenMedia({ type: "image", url: fullUrl })}
+                                    onLongPress={() => handleMessageLongPress(item)}
+                                    delayLongPress={300}
+                                    style={attachments.length > 1 ? styles.gridItem : null}
+                                >
+                                    <Image 
+                                        source={{ uri: fullUrl }} 
+                                        style={attachments.length > 1 ? styles.gridImage : styles.messageImage} 
+                                        resizeMode="cover" 
+                                    />
+                                </TouchableOpacity>
+                            );
+                        }
 
-            if (item.type === "video") {
-                return (
-                    <TouchableOpacity 
-                        style={styles.videoContainer}
-                        onPress={() => setFullScreenMedia({ type: "video", url: fullUrl })}
-                    >
-                        <Video
-                            source={{ uri: fullUrl }}
-                            style={styles.messageVideo}
-                            resizeMode={ResizeMode.COVER}
-                            shouldPlay={false}
-                        />
-                        <View style={styles.videoPlayOverlay}>
-                            <Ionicons name="play-circle" size={50} color="#fff" />
-                        </View>
-                    </TouchableOpacity>
-                );
-            }
+                        if (type === "video") {
+                            return (
+                                <TouchableOpacity 
+                                    key={index}
+                                    style={[styles.videoContainer, attachments.length > 1 && styles.gridItem]}
+                                    onPress={() => setFullScreenMedia({ type: "video", url: fullUrl })}
+                                    onLongPress={() => handleMessageLongPress(item)}
+                                    delayLongPress={300}
+                                >
+                                    <Video
+                                        source={{ uri: fullUrl }}
+                                        style={styles.messageVideo}
+                                        resizeMode={ResizeMode.COVER}
+                                        shouldPlay={false}
+                                    />
+                                    <View style={styles.videoPlayOverlay}>
+                                        <Ionicons name="play-circle" size={40} color="#fff" />
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        }
 
-            if (item.type === "file") {
-                return (
-                    <TouchableOpacity style={styles.fileContainer} onPress={() => { /* Link to open/download */ }}>
-                        <View style={styles.fileIcon}>
-                            <Ionicons name="document" size={24} color="#FF4B3A" />
-                        </View>
-                        <View style={styles.fileInfo}>
-                            <Text style={styles.fileName} numberOfLines={1}>{item.metadata?.fileName || "Attachment"}</Text>
-                            <Text style={styles.fileSize}>
-                                {item.metadata?.fileSize ? (item.metadata.fileSize / 1024 / 1024).toFixed(2) + " MB" : ""}
-                            </Text>
-                        </View>
-                    </TouchableOpacity>
-                );
-            }
-
-            return null;
+                        return (
+                            <TouchableOpacity 
+                                key={index} 
+                                style={[styles.fileContainer, attachments.length > 1 && styles.gridItem]} 
+                                onPress={() => Linking.openURL(fullUrl)}
+                            >
+                                <View style={styles.fileIcon}>
+                                    <Ionicons name="download" size={20} color="#FF4B3A" />
+                                </View>
+                                <View style={styles.fileInfo}>
+                                    <Text style={styles.fileName} numberOfLines={1}>{attachment.filename || "Attachment"}</Text>
+                                    <Text style={styles.fileSize}>
+                                        {attachment.size ? (attachment.size / 1024 / 1024).toFixed(2) + " MB" : ""}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+            );
         };
+
+        const isRecalled = item.isRecalled;
+        const isDeleted = item.deletedForEveryone;
 
         return (
             <View style={[styles.messageWrapper, isMyMessage ? styles.myMessageWrapper : styles.theirMessageWrapper]}>
                 {!isMyMessage && (
-                    <Image source={item.senderAvatar ? { uri: item.senderAvatar } : require("../../src/assets/images/user-avatar.jpg")} style={styles.messageAvatar} />
+                    <Image 
+                        source={item.senderAvatar ? { uri: item.senderAvatar } : require("../../src/assets/images/user-avatar.jpg")} 
+                        style={styles.messageAvatar} 
+                    />
                 )}
-                <View style={[
-                    styles.messageBubble, 
-                    isMyMessage ? styles.myMessageBubble : styles.theirMessageBubble,
-                    (item.type === "image" || item.type === "video") && styles.mediaBubble
-                ]}>
-                    {renderAttachment()}
-                    {item.content ? (
+                <View style={[styles.messageBubbleContainer, isMyMessage ? { alignItems: "flex-end" } : { alignItems: "flex-start" }]}>
+                    {conversation?.type === "group" && !isMyMessage && (
+                        <Text style={styles.senderName}>{item.senderName || "Unknown"}</Text>
+                    )}
+                    <TouchableOpacity 
+                        onLongPress={() => handleMessageLongPress(item)}
+                        delayLongPress={300}
+                        activeOpacity={0.8}
+                        style={[
+                            styles.messageBubble, 
+                            isMyMessage ? styles.myMessageBubble : styles.theirMessageBubble,
+                            (item.type === "image" || item.type === "video") && !isRecalled && !isDeleted && styles.mediaBubble,
+                            (isRecalled || isDeleted) && styles.recalledBubble
+                        ]}
+                    >
+                    {(!isRecalled && !isDeleted) && renderAttachment()}
+                    {isRecalled ? (
+                        <Text style={[styles.messageText, styles.recalledText]}>
+                            {isMyMessage ? "You recalled this message" : "This message was recalled"}
+                        </Text>
+                    ) : isDeleted ? (
+                        <Text style={[styles.messageText, styles.recalledText]}>
+                            This message was deleted
+                        </Text>
+                    ) : item.content ? (
                         <Text style={[styles.messageText, isMyMessage ? styles.myMessageText : styles.theirMessageText]}>
                             {item.content}
                         </Text>
@@ -291,6 +454,7 @@ const ChatDetailScreen = () => {
                     <Text style={[styles.messageTime, isMyMessage ? styles.myMessageTime : styles.theirMessageTime]}>
                         {time}
                     </Text>
+                    </TouchableOpacity>
                 </View>
             </View>
         );
@@ -302,11 +466,19 @@ const ChatDetailScreen = () => {
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color="#333" />
                 </TouchableOpacity>
-                <Image source={avatar ? { uri: avatar } : require("../../src/assets/images/user-avatar.jpg")} style={styles.headerAvatar} />
+                <Image 
+                    source={avatar ? { uri: avatar } : (conversation?.type === "group" ? { uri: "https://ui-avatars.com/api/?name=" + encodeURIComponent(conversationName || conversation?.name || "Group") + "&background=ff914c&color=fff" } : require("../../src/assets/images/user-avatar.jpg"))} 
+                    style={styles.headerAvatar} 
+                />
                 <View style={styles.headerTextContainer}>
-                    <Text style={styles.headerName}>{conversationName}</Text>
-                    <Text style={styles.headerStatus}>Trực tuyến</Text>
+                    <Text style={styles.headerName}>{conversationName || conversation?.name}</Text>
+                    <Text style={styles.headerStatus}>{conversation?.type === "group" ? `${conversation?.participants?.length} thành viên` : "Trực tuyến"}</Text>
                 </View>
+                {conversation?.type === "group" && (
+                    <TouchableOpacity onPress={() => router.push(`/chat/group-details?id=${conversationId}`)}>
+                        <Ionicons name="information-circle-outline" size={26} color="#333" />
+                    </TouchableOpacity>
+                )}
             </View>
 
             <KeyboardAvoidingView 
@@ -361,16 +533,60 @@ const ChatDetailScreen = () => {
 
                 {showEmojiPicker && (
                     <View style={styles.emojiPickerContainer}>
-                        <EmojiSelector
-                            onEmojiSelected={(emoji) => setInputText((prev) => prev + emoji)}
-                            category={Categories.all}
-                            showTabs={true}
-                            showSearchBar={false}
-                            columns={8}
-                        />
+                        {Platform.OS === "web" ? (
+                            <WebEmojiPicker 
+                                onEmojiClick={(emojiData: any) => {
+                                    setInputText((prev) => prev + emojiData.emoji);
+                                }}
+                                width="100%"
+                                height="100%"
+                            />
+                        ) : (
+                            <EmojiSelector
+                                onEmojiSelected={(emoji) => setInputText((prev) => prev + emoji)}
+                                category={Categories.all}
+                                showTabs={true}
+                                showSearchBar={false}
+                                columns={8}
+                            />
+                        )}
                     </View>
                 )}
             </KeyboardAvoidingView>
+
+            <Modal
+                visible={showPreviewModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowPreviewModal(false)}
+            >
+                <SafeAreaView style={styles.previewOverlay}>
+                    <View style={styles.previewHeader}>
+                        <TouchableOpacity onPress={() => { setShowPreviewModal(false); setPendingMedia([]); }}>
+                            <Ionicons name="close" size={28} color="#fff" />
+                        </TouchableOpacity>
+                        <Text style={styles.previewTitle}>Gửi {pendingMedia.length} tệp</Text>
+                        <TouchableOpacity onPress={uploadFiles}>
+                            <Text style={styles.previewSendBtn}>Gửi</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <FlatList
+                        data={pendingMedia}
+                        keyExtractor={(item, index) => index.toString()}
+                        horizontal
+                        renderItem={({ item }) => (
+                            <View style={styles.previewMediaItem}>
+                                {item.type?.startsWith("video") || item.mimeType?.startsWith("video") ? (
+                                    <Video source={{ uri: item.uri }} style={styles.previewImage} resizeMode={ResizeMode.CONTAIN} />
+                                ) : (
+                                    <Image source={{ uri: item.uri }} style={styles.previewImage} resizeMode="contain" />
+                                )}
+                            </View>
+                        )}
+                        contentContainerStyle={styles.previewList}
+                    />
+                </SafeAreaView>
+            </Modal>
 
             <Modal
                 visible={showAttachmentMenu}
@@ -431,12 +647,115 @@ const ChatDetailScreen = () => {
                     )}
                 </SafeAreaView>
             </Modal>
+            <Modal
+                visible={showMessageActions}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowMessageActions(false)}
+            >
+                <TouchableOpacity 
+                    style={styles.modalOverlay} 
+                    activeOpacity={1} 
+                    onPress={() => setShowMessageActions(false)}
+                >
+                    <View style={styles.actionSheet}>
+                        <View style={styles.actionSheetHeader}>
+                            <View style={styles.actionSheetHandle} />
+                        </View>
+                        
+                        <TouchableOpacity style={styles.actionItem} onPress={() => handleMessageAction("forward")}>
+                            <Ionicons name="arrow-redo-outline" size={24} color="#333" />
+                            <Text style={styles.actionLabel}>Chuyển tiếp</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.actionItem} onPress={() => handleMessageAction("copy")}>
+                            <Ionicons name="copy-outline" size={24} color="#333" />
+                            <Text style={styles.actionLabel}>Sao chép</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.actionItem} onPress={() => handleMessageAction("delete_me")}>
+                            <Ionicons name="trash-outline" size={24} color="#333" />
+                            <Text style={styles.actionLabel}>Xóa phía tôi</Text>
+                        </TouchableOpacity>
+
+                        {selectedMessage && userId && selectedMessage.senderId === userId && (
+                            <>
+                                <TouchableOpacity style={styles.actionItem} onPress={() => handleMessageAction("delete_everyone")}>
+                                    <Ionicons name="trash" size={24} color="#FF4B3A" />
+                                    <Text style={[styles.actionLabel, { color: "#FF4B3A" }]}>Xóa với mọi người</Text>
+                                </TouchableOpacity>
+
+                                {((new Date().getTime() - new Date(selectedMessage.createdAt).getTime()) / (1000 * 60)) <= 5 && (
+                                    <TouchableOpacity style={styles.actionItem} onPress={() => handleMessageAction("recall")}>
+                                        <Ionicons name="refresh-circle-outline" size={24} color="#FF4B3A" />
+                                        <Text style={[styles.actionLabel, { color: "#FF4B3A" }]}>Thu hồi tin nhắn</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </>
+                        )}
+                        
+                        <TouchableOpacity 
+                            style={[styles.actionItem, { marginTop: 10, borderTopWidth: 1, borderTopColor: "#eee" }]} 
+                            onPress={() => setShowMessageActions(false)}
+                        >
+                            <Text style={[styles.actionLabel, { textAlign: "center", width: "100%", color: "#888" }]}>Hủy</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            <Modal
+                visible={showForwardModal}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setShowForwardModal(false)}
+            >
+                <SafeAreaView style={styles.forwardOverlay}>
+                    <View style={styles.forwardContent}>
+                        <View style={styles.forwardHeader}>
+                            <Text style={styles.forwardTitle}>Chuyển tiếp tới...</Text>
+                            <TouchableOpacity onPress={() => setShowForwardModal(false)}>
+                                <Ionicons name="close" size={24} color="#333" />
+                            </TouchableOpacity>
+                        </View>
+                        <FlatList
+                            data={conversations}
+                            keyExtractor={(item) => item.conversationId}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity 
+                                    style={styles.forwardItem}
+                                    onPress={async () => {
+                                        try {
+                                            await ChatApi.sendMessage(
+                                                item.conversationId, 
+                                                selectedMessage?.content || "", 
+                                                selectedMessage?.type || "text",
+                                                selectedMessage?.metadata || {}
+                                            );
+                                            setShowForwardModal(false);
+                                            setSelectedMessage(null);
+                                            Alert.alert("Thành công", "Đã chuyển tiếp tin nhắn");
+                                        } catch (e: any) {
+                                            Alert.alert("Lỗi", e.message);
+                                        }
+                                    }}
+                                >
+                                    <Image 
+                                        source={item.avatarPath ? { uri: item.avatarPath } : (item.type === "group" ? { uri: "https://ui-avatars.com/api/?name=" + encodeURIComponent(item.name) + "&background=ff914c&color=fff" } : require("../../src/assets/images/user-avatar.jpg"))} 
+                                        style={styles.forwardAvatar} 
+                                    />
+                                    <Text style={styles.forwardName}>{item.name}</Text>
+                                </TouchableOpacity>
+                            )}
+                        />
+                    </View>
+                </SafeAreaView>
+            </Modal>
         </SafeAreaView>
     );
 };
 
 // ... Styles same as previous but kept clean
-import API_CONFIG from "../../src/configs/api";
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#f9f9f9" },
@@ -451,8 +770,10 @@ const styles = StyleSheet.create({
     messageWrapper: { flexDirection: "row", marginBottom: 15, alignItems: "flex-end" },
     myMessageWrapper: { justifyContent: "flex-end" },
     theirMessageWrapper: { justifyContent: "flex-start" },
-    messageAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 10 },
-    messageBubble: { maxWidth: "75%", padding: 12, borderRadius: 20 },
+    messageAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 8, marginBottom: 5 },
+    messageBubbleContainer: { maxWidth: "75%" },
+    senderName: { fontSize: 12, color: "#888", marginLeft: 10, marginBottom: 2 },
+    messageBubble: { padding: 12, borderRadius: 20 },
     myMessageBubble: { backgroundColor: "#FF4B3A", borderBottomRightRadius: 5 },
     theirMessageBubble: { backgroundColor: "#fff", borderBottomLeftRadius: 5, borderWidth: 1, borderColor: "#eee" },
     mediaBubble: { padding: 4, overflow: "hidden" },
@@ -475,18 +796,23 @@ const styles = StyleSheet.create({
     actionButton: { padding: 8 },
     input: { flex: 1, minHeight: 40, maxHeight: 100, backgroundColor: "#f5f5f5", borderRadius: 20, paddingHorizontal: 15, paddingTop: 10, paddingBottom: 10, marginHorizontal: 5, fontSize: 15 },
     sendButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FF4B3A", justifyContent: "center", alignItems: "center", marginLeft: 5 },
-    emojiPickerContainer: { height: 300, backgroundColor: "#fff" },
-    uploadingOverlay: { flexDirection: "row", alignItems: "center", justifyContent: "center", padding: 10, backgroundColor: "rgba(255,255,255,0.9)" },
-    uploadingText: { marginLeft: 10, color: "#FF4B3A", fontWeight: "500" },
-    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-    attachmentMenu: { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, flexDirection: "row", justifyContent: "space-around", paddingBottom: 40 },
-    attachmentItem: { alignItems: "center", width: 80 },
-    attachmentIcon: { width: 50, height: 50, borderRadius: 25, justifyContent: "center", alignItems: "center", marginBottom: 8 },
-    attachmentLabel: { fontSize: 12, color: "#666" },
-    fullScreenContainer: { flex: 1, backgroundColor: "#000", justifyContent: "center", alignItems: "center" },
-    closeMediaButton: { position: "absolute", top: 50, right: 20, zIndex: 2 },
-    fullScreenImage: { width: "100%", height: "100%" },
-    fullScreenVideo: { width: "100%", height: "100%" },
+    attachmentsGrid: { flexDirection: "row", flexWrap: "wrap", marginVertical: 5 },
+    gridItem: { width: "48%", margin: "1%", aspectRatio: 1 },
+    gridImage: { width: "100%", height: "100%", borderRadius: 10 },
+    previewOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.9)", justifyContent: "center" },
+    previewHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingTop: 40 },
+    previewTitle: { color: "#fff", fontSize: 18, fontWeight: "600" },
+    previewSendBtn: { color: "#FF4B3A", fontSize: 18, fontWeight: "bold" },
+    previewList: { padding: 20, alignItems: "center" },
+    previewMediaItem: { width: width - 40, height: width, marginHorizontal: 20 },
+    previewImage: { width: "100%", height: "100%", borderRadius: 10 },
+    forwardOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+    forwardContent: { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, height: "70%", padding: 20 },
+    forwardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+    forwardTitle: { fontSize: 18, fontWeight: "bold" },
+    forwardItem: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: "#eee" },
+    forwardAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 15 },
+    forwardName: { fontSize: 16, fontWeight: "500" },
 });
 
 export default ChatDetailScreen;

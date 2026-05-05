@@ -90,7 +90,7 @@ const ChatListScreen = () => {
         return (
             <TouchableOpacity style={styles.conversationItem} onPress={() => navigateToChat(item)}>
                 <Image
-                    source={item.avatarPath ? { uri: item.avatarPath } : require("../../src/assets/images/user-avatar.jpg")}
+                    source={item.avatarPath ? { uri: item.avatarPath } : (item.type === "group" ? { uri: "https://ui-avatars.com/api/?name=" + encodeURIComponent(item.name) + "&background=ff914c&color=fff" } : require("../../src/assets/images/user-avatar.jpg"))}
                     style={styles.avatar}
                 />
                 <View style={styles.contentContainer}>
@@ -125,9 +125,14 @@ const ChatListScreen = () => {
         <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Tin nhắn</Text>
-                <TouchableOpacity onPress={() => router.push("/chat/new")} style={styles.newChatButton}>
-                    <Ionicons name="create-outline" size={24} color="#FF4B3A" />
-                </TouchableOpacity>
+                <View style={styles.headerButtons}>
+                    <TouchableOpacity onPress={() => router.push("/chat/create-group")} style={styles.headerButton}>
+                        <Ionicons name="people-outline" size={26} color="#FF4B3A" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => router.push("/chat/new")} style={styles.headerButton}>
+                        <Ionicons name="create-outline" size={24} color="#FF4B3A" />
+                    </TouchableOpacity>
+                </View>
             </View>
             <FlatList
                 data={conversations}
@@ -166,6 +171,14 @@ const styles = StyleSheet.create({
         fontSize: 28,
         fontWeight: "bold",
         color: "#333",
+    },
+    headerButtons: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    headerButton: {
+        marginLeft: 15,
+        padding: 5,
     },
     newChatButton: {
         padding: 8,

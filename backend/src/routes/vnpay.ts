@@ -3,18 +3,18 @@ import { Router } from "express";
 const router = Router();
 
 router.post("/create_payment_url", function (req, res, next) {
-    const ipAddr =
+    const ipAddr: any =
         req.headers["x-forwarded-for"] ||
         req.connection.remoteAddress ||
-        req.socket.remoteAddress ||
-        req.connection.socket.remoteAddress;
+        req.socket?.remoteAddress ||
+        req.connection?.socket?.remoteAddress;
 
     const config = require("config");
     const dateFormat = require("dateformat");
 
     const tmnCode = config.get("vnp_TmnCode");
     const secretKey = config.get("vnp_HashSecret");
-    const vnpUrl = config.get("vnp_Url");
+    let vnpUrl = config.get("vnp_Url");
     const returnUrl = config.get("vnp_ReturnUrl");
 
     const date = new Date();
@@ -26,12 +26,12 @@ router.post("/create_payment_url", function (req, res, next) {
 
     const orderInfo = req.body.orderDescription;
     const orderType = req.body.orderType;
-    const locale = req.body.language;
+    let locale = req.body.language;
     if (locale === null || locale === "") {
         locale = "vn";
     }
     const currCode = "VND";
-    const vnp_Params = {};
+    let vnp_Params: any = {};
     vnp_Params["vnp_Version"] = "2.1.0";
     vnp_Params["vnp_Command"] = "pay";
     vnp_Params["vnp_TmnCode"] = tmnCode;
@@ -63,7 +63,7 @@ router.post("/create_payment_url", function (req, res, next) {
 });
 
 router.get("/vnpay_return", function (req, res, next) {
-    const vnp_Params = req.query;
+    let vnp_Params: any = req.query;
 
     const secureHash = vnp_Params["vnp_SecureHash"];
 

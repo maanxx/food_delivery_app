@@ -4,7 +4,7 @@ import ResponseUtils from "../utils/response";
 
 export class FavoriteDishController {
     // Lấy danh sách món yêu thích của user (trả về chi tiết món ăn)
-    static async getFavorites(req, res) {
+    static async getFavorites(req: any, res: any) {
         try {
             const { user_id } = req.params;
             const favorites = await FavoriteDishModel.findByUser(user_id);
@@ -37,29 +37,28 @@ export class FavoriteDishController {
                 }
             }
             return ResponseUtils.success(res, "Lấy danh sách món yêu thích thành công", foods);
-        } catch (err) {
+        } catch (err: any) {
             return ResponseUtils.error(res, err.message || "Lỗi server", 500);
         }
     }
 
     // Thêm món vào yêu thích
-    static async addFavorite(req, res) {
+    static async addFavorite(req: any, res: any) {
         try {
             const { user_id, dish_id } = req.body;
-            console.log("user_id, dish_id: ", user_id, dish_id);
             const favorite_id = await FavoriteDishModel.add(user_id, dish_id);
             if (favorite_id) {
                 return ResponseUtils.success(res, "Đã thêm vào yêu thích", { favorite_id });
             } else {
                 return ResponseUtils.error(res, "Không thể thêm vào yêu thích", 400);
             }
-        } catch (err) {
+        } catch (err: any) {
             return ResponseUtils.error(res, err.message || "Lỗi server", 500);
         }
     }
 
     // Xóa món khỏi yêu thích
-    static async removeFavorite(req, res) {
+    static async removeFavorite(req: any, res: any) {
         try {
             const { user_id, dish_id } = req.body;
             const deleted = await FavoriteDishModel.remove(user_id, dish_id);
@@ -68,36 +67,8 @@ export class FavoriteDishController {
             } else {
                 return ResponseUtils.error(res, "Favorite not found", 404);
             }
-        } catch (err) {
+        } catch (err: any) {
             return ResponseUtils.error(res, err.message || "Lỗi server", 500);
         }
     }
 }
-
-export const addFavorite = async (req, res) => {
-    try {
-        const { user_id, dish_id } = req.body;
-        const favorite = await FavoriteDish.create({
-            favorite_id: uuidv4(),
-            user_id,
-            dish_id,
-        });
-        res.status(201).json(favorite);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
-
-export const removeFavorite = async (req, res) => {
-    try {
-        const { user_id, dish_id } = req.body;
-        const deleted = await FavoriteDish.destroy({ where: { user_id, dish_id } });
-        if (deleted) {
-            res.json({ success: true });
-        } else {
-            res.status(404).json({ error: "Favorite not found" });
-        }
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};

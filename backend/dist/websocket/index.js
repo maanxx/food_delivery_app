@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.emitConversationUpdated = exports.emitMessageToConversation = exports.initializeWebSocket = void 0;
+exports.emitMessageRecalled = exports.emitMessageDeletedForEveryone = exports.emitMessageDeletedForMe = exports.emitConversationUpdated = exports.emitMessageToConversation = exports.initializeWebSocket = void 0;
 const socket_io_1 = require("socket.io");
 const jwt_1 = require("../utils/jwt");
 const initializeWebSocket = (server) => {
@@ -130,3 +130,45 @@ const emitConversationUpdated = (io, conversationId, memberIds, conversationData
     }
 };
 exports.emitConversationUpdated = emitConversationUpdated;
+/**
+ * Emits message_deleted_for_me to a specific user's personal room.
+ */
+const emitMessageDeletedForMe = (io, conversationId, messageId, userId) => {
+    const userRoom = `user:${userId}`;
+    const payload = {
+        conversationId,
+        messageId,
+        timestamp: new Date().toISOString(),
+    };
+    console.log(`[WS] Emitting message_deleted_for_me to user room ${userRoom}`, payload);
+    io.to(userRoom).emit("message_deleted_for_me", payload);
+};
+exports.emitMessageDeletedForMe = emitMessageDeletedForMe;
+/**
+ * Emits message_deleted_for_everyone to the conversation room.
+ */
+const emitMessageDeletedForEveryone = (io, conversationId, messageId) => {
+    const roomName = `conversation_${conversationId}`;
+    const payload = {
+        conversationId,
+        messageId,
+        timestamp: new Date().toISOString(),
+    };
+    console.log(`[WS] Emitting message_deleted_for_everyone to room ${roomName}`, payload);
+    io.to(roomName).emit("message_deleted_for_everyone", payload);
+};
+exports.emitMessageDeletedForEveryone = emitMessageDeletedForEveryone;
+/**
+ * Emits message_recalled to the conversation room.
+ */
+const emitMessageRecalled = (io, conversationId, messageId) => {
+    const roomName = `conversation_${conversationId}`;
+    const payload = {
+        conversationId,
+        messageId,
+        timestamp: new Date().toISOString(),
+    };
+    console.log(`[WS] Emitting message_recalled to room ${roomName}`, payload);
+    io.to(roomName).emit("message_recalled", payload);
+};
+exports.emitMessageRecalled = emitMessageRecalled;

@@ -58,6 +58,13 @@ class ChatApi {
         });
     }
 
+    async getConversationDetails(conversationId: string) {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/details`, {
+            method: "POST",
+            body: JSON.stringify({ conversationId }),
+        });
+    }
+
     async getMessages(conversationId: string, limit = 50, cursor?: string) {
         return this.fetchWithAuth(API_CONFIG.ENDPOINTS.CHAT.MESSAGES, {
             method: "POST",
@@ -94,16 +101,69 @@ class ChatApi {
         return this.fetchWithAuth(API_CONFIG.ENDPOINTS.AUTH.USERS);
     }
 
-    async deleteMessage(conversationId: string, messageId: string, forEveryone = false) {
-        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/${messageId}`, {
+    async deleteForMe(messageId: string, conversationId: string) {
+        return this.fetchWithAuth(`/api/messages/${messageId}/delete-for-me`, {
             method: "DELETE",
-            body: JSON.stringify({ forEveryone }),
+            body: JSON.stringify({ conversationId }),
         });
     }
 
-    async recallMessage(conversationId: string, messageId: string) {
-        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/${messageId}/recall`, {
+    async deleteForEveryone(messageId: string, conversationId: string) {
+        return this.fetchWithAuth(`/api/messages/${messageId}/delete-for-everyone`, {
+            method: "DELETE",
+            body: JSON.stringify({ conversationId }),
+        });
+    }
+
+    async recallMessage(messageId: string, conversationId: string) {
+        return this.fetchWithAuth(`/api/messages/${messageId}/recall`, {
+            method: "PUT",
+            body: JSON.stringify({ conversationId }),
+        });
+    }
+
+    async deleteMessage(conversationId: string, messageId: string, forEveryone = false) {
+        if (forEveryone) return this.deleteForEveryone(messageId, conversationId);
+        return this.deleteForMe(messageId, conversationId);
+    }
+
+    // Group management
+    async createGroup(name: string, participantIds: string[], avatar?: string) {
+        return this.fetchWithAuth("/api/groups/create", {
             method: "POST",
+            body: JSON.stringify({ name, participantIds, avatar }),
+        });
+    }
+
+    async addMember(conversationId: string, participantIds: string[]) {
+        return this.fetchWithAuth(`/api/groups/${conversationId}/add-member`, {
+            method: "POST",
+            body: JSON.stringify({ participantIds }),
+        });
+    }
+
+    async removeMember(conversationId: string, userId: string) {
+        return this.fetchWithAuth(`/api/groups/${conversationId}/remove-member/${userId}`, {
+            method: "DELETE",
+        });
+    }
+
+    async leaveGroup(conversationId: string) {
+        return this.fetchWithAuth(`/api/groups/${conversationId}/leave`, {
+            method: "DELETE",
+        });
+    }
+
+    async dissolveGroup(conversationId: string) {
+        return this.fetchWithAuth(`/api/groups/${conversationId}/dissolve`, {
+            method: "DELETE",
+        });
+    }
+
+    async assignRole(conversationId: string, targetUserId: string, role: string) {
+        return this.fetchWithAuth(`/api/groups/${conversationId}/assign-role`, {
+            method: "PUT",
+            body: JSON.stringify({ targetUserId, role }),
         });
     }
 }

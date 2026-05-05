@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.removeFavorite = exports.addFavorite = exports.FavoriteDishController = void 0;
+exports.FavoriteDishController = void 0;
 const FavoriteDish_1 = require("../models/FavoriteDish");
 const Dish_1 = require("../models/Dish");
 const response_1 = __importDefault(require("../utils/response"));
@@ -51,7 +51,6 @@ class FavoriteDishController {
     static async addFavorite(req, res) {
         try {
             const { user_id, dish_id } = req.body;
-            console.log("user_id, dish_id: ", user_id, dish_id);
             const favorite_id = await FavoriteDish_1.FavoriteDishModel.add(user_id, dish_id);
             if (favorite_id) {
                 return response_1.default.success(res, "Đã thêm vào yêu thích", { favorite_id });
@@ -82,34 +81,3 @@ class FavoriteDishController {
     }
 }
 exports.FavoriteDishController = FavoriteDishController;
-const addFavorite = async (req, res) => {
-    try {
-        const { user_id, dish_id } = req.body;
-        const favorite = await FavoriteDish.create({
-            favorite_id: uuidv4(),
-            user_id,
-            dish_id,
-        });
-        res.status(201).json(favorite);
-    }
-    catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
-exports.addFavorite = addFavorite;
-const removeFavorite = async (req, res) => {
-    try {
-        const { user_id, dish_id } = req.body;
-        const deleted = await FavoriteDish.destroy({ where: { user_id, dish_id } });
-        if (deleted) {
-            res.json({ success: true });
-        }
-        else {
-            res.status(404).json({ error: "Favorite not found" });
-        }
-    }
-    catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
-exports.removeFavorite = removeFavorite;

@@ -22,6 +22,7 @@ class MessageModel {
                 is_deleted: false,
                 is_edited: false,
                 is_recalled: false,
+                deleted_for_everyone: false,
                 deleted_by: dynamodb_1.default.createSet(["dummy"]), // create empty set workaround or add dummy
             },
         };
@@ -42,10 +43,8 @@ class MessageModel {
         const params = {
             TableName: TABLE_NAME,
             KeyConditionExpression: "conversation_id = :conversationId",
-            FilterExpression: "is_deleted = :is_deleted",
             ExpressionAttributeValues: {
                 ":conversationId": conversationId,
-                ":is_deleted": false,
             },
             Limit: limit,
             ScanIndexForward: false, // des descending (newest first)
@@ -105,14 +104,14 @@ class MessageModel {
         const result = await dynamodb_1.default.update(params).promise();
         return result.Attributes;
     }
-    static async delete(conversationId, messageId) {
+    static async deleteForEveryone(conversationId, messageId) {
         const now = new Date().toISOString();
         const params = {
             TableName: TABLE_NAME,
             Key: { conversation_id: conversationId, message_id: messageId },
-            UpdateExpression: "SET is_deleted = :is_deleted, updated_at = :updated_at",
+            UpdateExpression: "SET deleted_for_everyone = :deleted_for_everyone, updated_at = :updated_at",
             ExpressionAttributeValues: {
-                ":is_deleted": true,
+                ":deleted_for_everyone": true,
                 ":updated_at": now,
             },
             ReturnValues: "ALL_NEW",

@@ -182,7 +182,8 @@ export class ChatController {
     static async deleteMessage(req: any, res: Response) {
         try {
             const userId = req.userId;
-            const { conversationId, messageId } = req.params;
+            const conversationId = req.params.conversationId || req.body.conversationId || req.query.conversationId;
+            const messageId = req.params.messageId;
             const { forEveryone = false } = req.body;
             const io = req.app.get("io");
 
@@ -193,8 +194,12 @@ export class ChatController {
             }
 
             if (io) {
-                const { emitMessageDeleted } = require("../websocket/index");
-                emitMessageDeleted(io, conversationId, messageId, forEveryone, userId);
+                const { emitMessageDeletedForMe, emitMessageDeletedForEveryone } = require("../websocket/index");
+                if (forEveryone) {
+                    emitMessageDeletedForEveryone(io, conversationId, messageId);
+                } else {
+                    emitMessageDeletedForMe(io, conversationId, messageId, userId);
+                }
             }
 
             ResponseUtils.success(res, "Message deleted successfully");
@@ -206,7 +211,8 @@ export class ChatController {
     static async recallMessage(req: any, res: Response) {
         try {
             const userId = req.userId;
-            const { conversationId, messageId } = req.params;
+            const conversationId = req.params.conversationId || req.body.conversationId || req.query.conversationId;
+            const messageId = req.params.messageId;
             const io = req.app.get("io");
 
             await ChatService.recallMessage(userId, conversationId, messageId);

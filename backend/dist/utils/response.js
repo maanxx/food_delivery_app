@@ -15,7 +15,16 @@ class ResponseUtils {
         return res.status(statusCode).json(response);
     }
     // Error response
-    static error(res, message = "Internal Server Error", errors, statusCode = 500, data) {
+    static error(res, message = "Internal Server Error", errorsOrStatusCode, statusCode = 500, data) {
+        let errors;
+        let finalStatusCode = statusCode;
+        if (typeof errorsOrStatusCode === "number") {
+            finalStatusCode = errorsOrStatusCode;
+            errors = undefined;
+        }
+        else {
+            errors = errorsOrStatusCode;
+        }
         const response = {
             success: false,
             message,
@@ -25,7 +34,7 @@ class ResponseUtils {
                 timestamp: new Date().toISOString(),
             },
         };
-        return res.status(statusCode).json(response);
+        return res.status(finalStatusCode).json(response);
     }
     // Validation error response
     static validationError(res, errors, message = "Validation failed") {

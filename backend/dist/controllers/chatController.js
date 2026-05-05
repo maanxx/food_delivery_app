@@ -157,5 +157,50 @@ class ChatController {
             response_1.default.error(res, error.message);
         }
     }
+    static async deleteMessage(req, res) {
+        try {
+            const userId = req.userId;
+            const conversationId = req.params.conversationId || req.body.conversationId || req.query.conversationId;
+            const messageId = req.params.messageId;
+            const { forEveryone = false } = req.body;
+            const io = req.app.get("io");
+            if (forEveryone) {
+                await chatService_1.ChatService.deleteMessageForEveryone(userId, conversationId, messageId);
+            }
+            else {
+                await chatService_1.ChatService.deleteMessageForMe(userId, conversationId, messageId);
+            }
+            if (io) {
+                const { emitMessageDeletedForMe, emitMessageDeletedForEveryone } = require("../websocket/index");
+                if (forEveryone) {
+                    emitMessageDeletedForEveryone(io, conversationId, messageId);
+                }
+                else {
+                    emitMessageDeletedForMe(io, conversationId, messageId, userId);
+                }
+            }
+            response_1.default.success(res, "Message deleted successfully");
+        }
+        catch (error) {
+            response_1.default.error(res, error.message);
+        }
+    }
+    static async recallMessage(req, res) {
+        try {
+            const userId = req.userId;
+            const conversationId = req.params.conversationId || req.body.conversationId || req.query.conversationId;
+            const messageId = req.params.messageId;
+            const io = req.app.get("io");
+            await chatService_1.ChatService.recallMessage(userId, conversationId, messageId);
+            if (io) {
+                const { emitMessageRecalled } = require("../websocket/index");
+                emitMessageRecalled(io, conversationId, messageId);
+            }
+            response_1.default.success(res, "Message recalled successfully");
+        }
+        catch (error) {
+            response_1.default.error(res, error.message);
+        }
+    }
 }
 exports.ChatController = ChatController;

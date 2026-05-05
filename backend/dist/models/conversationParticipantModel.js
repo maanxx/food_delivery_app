@@ -184,6 +184,16 @@ class ConversationParticipantModel {
         const result = await dynamodb_1.default.update(params).promise();
         return result.Attributes;
     }
+    static async addParticipant(conversationId, userId, role = "member") {
+        return this.create({
+            conversation_id: conversationId,
+            user_id: userId,
+            role,
+        });
+    }
+    static async findByUserId(userId, limit = 20, lastEvaluatedKey = null) {
+        return this.findConversationsForUser(userId, limit, lastEvaluatedKey);
+    }
     static async getDeletedAt(conversationId, userId) {
         const params = {
             TableName: TABLE_NAME,

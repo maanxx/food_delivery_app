@@ -76,7 +76,8 @@ class SocketService {
             "user_typing",
             "user_stop_typing",
             "conversation_updated",
-            "message_deleted",
+            "message_deleted_for_me",
+            "message_deleted_for_everyone",
             "message_recalled",
         ];
 
