@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { GroupService } from "../services/groupService";
 import ResponseUtils from "../utils/response";
+import { emitGroupDissolved } from "../websocket";
 
 export class GroupController {
     static async createGroup(req: any, res: Response) {
@@ -65,9 +66,25 @@ export class GroupController {
         try {
             const userId = req.userId;
             const { id: conversationId } = req.params;
+            const { leaveType } = req.body;
 
-            const result = await GroupService.leaveGroup(userId, conversationId);
+            const result = await GroupService.leaveGroup(userId, conversationId, leaveType);
             ResponseUtils.success(res, "Left group successfully", result);
+        } catch (error: any) {
+            ResponseUtils.error(res, error.message);
+        }
+    }
+
+    static async updateAvatar(req: any, res: Response) {
+        try {
+            const userId = req.userId;
+            const { id: conversationId } = req.params;
+            const { avatarPath } = req.body;
+
+            if (!avatarPath) return ResponseUtils.badRequest(res, "avatarPath is required");
+
+            const result = await GroupService.updateAvatar(userId, conversationId, avatarPath);
+            ResponseUtils.success(res, "Avatar updated successfully", result);
         } catch (error: any) {
             ResponseUtils.error(res, error.message);
         }
@@ -79,6 +96,12 @@ export class GroupController {
             const { id: conversationId } = req.params;
 
             const result = await GroupService.dissolveGroup(userId, conversationId);
+            
+            const io = req.app.get("io");
+            if (io && result.memberIds) {
+                emitGroupDissolved(io, conversationId, result.memberIds);
+            }
+
             ResponseUtils.success(res, "Group dissolved successfully", result);
         } catch (error: any) {
             ResponseUtils.error(res, error.message);

@@ -146,6 +146,13 @@ const ChatDetailScreen = () => {
             }
         };
 
+        const handleGroupDissolved = (data: any) => {
+            if (data.conversationId === conversationId) {
+                Alert.alert("Thông báo", "Nhóm này đã bị giải tán bởi trưởng nhóm.");
+                router.replace("/(tabs)/chat");
+            }
+        };
+
         const initSocket = async () => {
             console.log("[ChatDetail] Connecting socket and joining room:", conversationId);
             await SocketService.connect();
@@ -155,6 +162,7 @@ const ChatDetailScreen = () => {
             SocketService.on("message_deleted_for_me", handleMessageDeletedForMe);
             SocketService.on("message_deleted_for_everyone", handleMessageDeletedForEveryone);
             SocketService.on("message_recalled", handleMessageRecalled);
+            SocketService.on("group_dissolved", handleGroupDissolved);
 
             console.log("[ChatDetail] Socket listener registered for events");
         };
@@ -169,6 +177,7 @@ const ChatDetailScreen = () => {
             SocketService.off("message_deleted_for_me", handleMessageDeletedForMe);
             SocketService.off("message_deleted_for_everyone", handleMessageDeletedForEveryone);
             SocketService.off("message_recalled", handleMessageRecalled);
+            SocketService.off("group_dissolved", handleGroupDissolved);
         };
     }, [conversationId]); // ← removed userId from deps: use userIdRef.current inside instead
 
@@ -413,6 +422,14 @@ const ChatDetailScreen = () => {
 
         const isRecalled = item.isRecalled;
         const isDeleted = item.deletedForEveryone;
+
+        if (item.type === "system") {
+            return (
+                <View style={styles.systemMessageContainer}>
+                    <Text style={styles.systemMessageText}>{item.content}</Text>
+                </View>
+            );
+        }
 
         return (
             <View style={[styles.messageWrapper, isMyMessage ? styles.myMessageWrapper : styles.theirMessageWrapper]}>
@@ -784,6 +801,8 @@ const styles = StyleSheet.create({
     videoContainer: { width: width * 0.6, height: width * 0.4, borderRadius: 15, overflow: "hidden", backgroundColor: "#000", justifyContent: "center", alignItems: "center", marginBottom: 5 },
     messageVideo: { width: "100%", height: "100%" },
     videoPlayOverlay: { position: "absolute", zIndex: 1 },
+    systemMessageContainer: { alignSelf: "center", backgroundColor: "rgba(0,0,0,0.05)", paddingHorizontal: 15, paddingVertical: 5, borderRadius: 15, marginVertical: 10, maxWidth: "80%" },
+    systemMessageText: { fontSize: 12, color: "#888", textAlign: "center", fontStyle: "italic" },
     fileContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.05)", padding: 10, borderRadius: 12, marginBottom: 5, minWidth: width * 0.5 },
     fileIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#fff", justifyContent: "center", alignItems: "center", marginRight: 10 },
     fileInfo: { flex: 1 },

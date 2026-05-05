@@ -16,6 +16,9 @@ router.delete("/:id/remove-member/:userId", authMiddleware, GroupController.remo
 // Assign role
 router.put("/:id/assign-role", authMiddleware, GroupController.assignRole);
 
+// Update avatar
+router.put("/:id/avatar", authMiddleware, GroupController.updateAvatar);
+
 // Leave group
 router.delete("/:id/leave", authMiddleware, GroupController.leaveGroup);
 

@@ -212,3 +212,27 @@ export const emitMessageRecalled = (
     console.log(`[WS] Emitting message_recalled to room ${roomName}`, payload);
     io.to(roomName).emit("message_recalled", payload);
 };
+
+/**
+ * Emits group_dissolved to each member's personal room.
+ */
+export const emitGroupDissolved = (
+    io: SocketIOServer,
+    conversationId: string,
+    memberIds: string[]
+) => {
+    const payload = {
+        conversationId,
+        timestamp: new Date().toISOString(),
+    };
+
+    for (const memberId of memberIds) {
+        const userRoom = `user:${memberId}`;
+        console.log(`[WS] Emitting group_dissolved to user room ${userRoom}`, payload);
+        io.to(userRoom).emit("group_dissolved", payload);
+    }
+
+    // Also emit to the conversation room if anyone is currently in it
+    const roomName = `conversation_${conversationId}`;
+    io.to(roomName).emit("group_dissolved", payload);
+};

@@ -148,9 +148,17 @@ class ChatApi {
         });
     }
 
-    async leaveGroup(conversationId: string) {
+    async leaveGroup(conversationId: string, leaveType: "silent" | "notify" = "notify") {
         return this.fetchWithAuth(`/api/groups/${conversationId}/leave`, {
             method: "DELETE",
+            body: JSON.stringify({ leaveType }),
+        });
+    }
+
+    async updateGroupAvatar(conversationId: string, avatarPath: string) {
+        return this.fetchWithAuth(`/api/groups/${conversationId}/avatar`, {
+            method: "PUT",
+            body: JSON.stringify({ avatarPath }),
         });
     }
 

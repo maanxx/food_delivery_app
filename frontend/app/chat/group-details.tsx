@@ -10,9 +10,11 @@ import {
     ActivityIndicator,
     Alert,
     ScrollView,
+    Modal,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import ChatApi from "../../src/services/chatApi";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -22,6 +24,16 @@ const GroupDetailsScreen = () => {
     const [group, setGroup] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [currentUser, setCurrentUser] = useState<any>(null);
+    
+    // Add Member Modal State
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+    const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+    const [loadingUsers, setLoadingUsers] = useState(false);
+    
+    // Leave Modal State
+    const [showLeaveModal, setShowLeaveModal] = useState(false);
+    const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
 
     useEffect(() => {
         const loadDetails = async () => {
@@ -43,21 +55,44 @@ const GroupDetailsScreen = () => {
         loadDetails();
     }, [id]);
 
+    const loadAvailableUsers = async () => {
+        setLoadingUsers(true);
+        try {
+            const users = await ChatApi.getAvailableUsers();
+            // Filter out existing members
+            const memberIds = group.participants.map((p: any) => p.userId);
+            setAvailableUsers(users.filter((u: any) => !memberIds.includes(u.user_id)));
+        } catch (error) {
+            console.error("Failed to load users:", error);
+        } finally {
+            setLoadingUsers(false);
+        }
+    };
+
+    useEffect(() => {
+        if (showAddModal) loadAvailableUsers();
+    }, [showAddModal]);
+
     const isOwner = group?.participants?.find((p: any) => p.userId === (currentUser?.user_id || currentUser?.id))?.role === "owner";
     const isAdmin = isOwner || group?.participants?.find((p: any) => p.userId === (currentUser?.user_id || currentUser?.id))?.role === "admin";
+    const isRestrictedGroup = group?.type === "school" || group?.isSystemGroup === true;
 
-    const handleLeaveGroup = () => {
+    const handleLeaveGroup = (type: "silent" | "notify") => {
+        if (isRestrictedGroup) {
+            Alert.alert("Thông báo", "Đây là nhóm trường học. Bạn không thể tự ý rời khỏi nhóm này.");
+            return;
+        }
         Alert.alert(
             "Rời nhóm",
-            "Bạn có chắc chắn muốn rời khỏi nhóm này?",
+            type === "silent" ? "Rời nhóm trong im lặng?" : "Rời nhóm và thông báo cho mọi người?",
             [
                 { text: "Hủy", style: "cancel" },
                 {
-                    text: "Rời nhóm",
+                    text: "Đồng ý",
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            await ChatApi.leaveGroup(id as string);
+                            await ChatApi.leaveGroup(id as string, type);
                             router.replace("/(tabs)/chat");
                         } catch (error: any) {
                             Alert.alert("Lỗi", error.message);
@@ -66,6 +101,60 @@ const GroupDetailsScreen = () => {
                 },
             ]
         );
+        setShowLeaveModal(false);
+    };
+
+    const handleAddMembers = async () => {
+        if (selectedUsers.length === 0) return;
+        try {
+            await ChatApi.addMember(id as string, selectedUsers);
+            setShowAddModal(false);
+            setSelectedUsers([]);
+            // Refresh
+            const details = await ChatApi.getConversationDetails(id as string);
+            setGroup(details);
+        } catch (error: any) {
+            Alert.alert("Lỗi", error.message);
+        }
+    };
+
+    const handlePickAvatar = async () => {
+        if (!isAdmin) return;
+        
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 1,
+        });
+
+        if (!result.canceled) {
+            uploadAvatar(result.assets[0]);
+        }
+    };
+
+    const uploadAvatar = async (asset: any) => {
+        setIsUpdatingAvatar(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", {
+                uri: asset.uri,
+                name: asset.fileName || "avatar.jpg",
+                type: asset.mimeType || "image/jpeg",
+            } as any);
+
+            const uploadData = await ChatApi.uploadFile(formData);
+            await ChatApi.updateGroupAvatar(id as string, uploadData.url);
+            
+            // Refresh
+            const details = await ChatApi.getConversationDetails(id as string);
+            setGroup(details);
+            Alert.alert("Thành công", "Đã cập nhật ảnh đại diện nhóm");
+        } catch (error: any) {
+            Alert.alert("Lỗi", error.message);
+        } finally {
+            setIsUpdatingAvatar(false);
+        }
     };
 
     const handleDissolveGroup = () => {
@@ -132,6 +221,28 @@ const GroupDetailsScreen = () => {
         </View>
     );
 
+    const renderAvailableUser = ({ item }: { item: any }) => {
+        const isSelected = selectedUsers.includes(item.user_id);
+        return (
+            <TouchableOpacity
+                style={styles.userItem}
+                onPress={() => {
+                    if (isSelected) setSelectedUsers(prev => prev.filter(id => id !== item.user_id));
+                    else setSelectedUsers(prev => [...prev, item.user_id]);
+                }}
+            >
+                <Image
+                    source={item.avatar_path ? { uri: item.avatar_path } : require("../../src/assets/images/user-avatar.jpg")}
+                    style={styles.memberAvatar}
+                />
+                <Text style={styles.memberName}>{item.fullname || item.username}</Text>
+                <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                    {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                </View>
+            </TouchableOpacity>
+        );
+    };
+
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -152,10 +263,17 @@ const GroupDetailsScreen = () => {
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.groupInfoCard}>
-                    <Image
-                        source={group?.avatarPath ? { uri: group.avatarPath } : { uri: "https://ui-avatars.com/api/?name=" + encodeURIComponent(group?.name || "Group") + "&background=ff914c&color=fff&size=128" }}
-                        style={styles.largeAvatar}
-                    />
+                    <View style={styles.avatarWrapper}>
+                        <Image
+                            source={group?.avatarPath ? { uri: group.avatarPath } : { uri: "https://ui-avatars.com/api/?name=" + encodeURIComponent(group?.name || "Group") + "&background=ff914c&color=fff&size=128" }}
+                            style={styles.largeAvatar}
+                        />
+                        {isAdmin && (
+                            <TouchableOpacity style={styles.editAvatarBtn} onPress={handlePickAvatar} disabled={isUpdatingAvatar}>
+                                {isUpdatingAvatar ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="camera" size={20} color="#fff" />}
+                            </TouchableOpacity>
+                        )}
+                    </View>
                     <Text style={styles.groupNameText}>{group?.name}</Text>
                     <Text style={styles.memberCountText}>{group?.participants?.length} thành viên</Text>
                 </View>
@@ -164,7 +282,7 @@ const GroupDetailsScreen = () => {
                     <View style={styles.sectionHeader}>
                         <Text style={styles.sectionTitle}>Thành viên</Text>
                         {isAdmin && (
-                            <TouchableOpacity onPress={() => Alert.alert("Tính năng", "Coming soon: Add member UI")}>
+                            <TouchableOpacity onPress={() => setShowAddModal(true)}>
                                 <Text style={styles.addText}>Thêm</Text>
                             </TouchableOpacity>
                         )}
@@ -178,10 +296,12 @@ const GroupDetailsScreen = () => {
                 </View>
 
                 <View style={styles.actionSection}>
-                    <TouchableOpacity style={styles.actionItem} onPress={handleLeaveGroup}>
-                        <Ionicons name="log-out-outline" size={24} color="#ff4d4d" />
-                        <Text style={[styles.actionText, { color: "#ff4d4d" }]}>Rời nhóm</Text>
-                    </TouchableOpacity>
+                    {!isRestrictedGroup && (
+                        <TouchableOpacity style={styles.actionItem} onPress={() => setShowLeaveModal(true)}>
+                            <Ionicons name="log-out-outline" size={24} color="#ff4d4d" />
+                            <Text style={[styles.actionText, { color: "#ff4d4d" }]}>Rời nhóm</Text>
+                        </TouchableOpacity>
+                    )}
 
                     {isOwner && (
                         <TouchableOpacity style={styles.actionItem} onPress={handleDissolveGroup}>
@@ -191,6 +311,48 @@ const GroupDetailsScreen = () => {
                     )}
                 </View>
             </ScrollView>
+
+            {/* Leave Options Modal */}
+            <Modal visible={showLeaveModal} transparent animationType="fade">
+                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowLeaveModal(false)}>
+                    <View style={styles.optionsCard}>
+                        <Text style={styles.modalTitle}>Rời nhóm</Text>
+                        <TouchableOpacity style={styles.optionBtn} onPress={() => handleLeaveGroup("silent")}>
+                            <Ionicons name="notifications-off-outline" size={22} color="#333" />
+                            <Text style={styles.optionText}>Rời nhóm trong im lặng</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.optionBtn, { borderTopWidth: 0.5, borderTopColor: "#eee" }]} onPress={() => handleLeaveGroup("notify")}>
+                            <Ionicons name="notifications-outline" size={22} color="#ff914c" />
+                            <Text style={[styles.optionText, { color: "#ff914c" }]}>Rời nhóm và thông báo</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Add Member Modal */}
+            <Modal visible={showAddModal} transparent animationType="slide">
+                <View style={styles.addMemberContainer}>
+                    <View style={styles.addMemberHeader}>
+                        <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                            <Text style={styles.cancelText}>Hủy</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.addMemberTitle}>Thêm thành viên</Text>
+                        <TouchableOpacity onPress={handleAddMembers} disabled={selectedUsers.length === 0}>
+                            <Text style={[styles.addBtnText, selectedUsers.length === 0 && { color: "#ccc" }]}>Thêm</Text>
+                        </TouchableOpacity>
+                    </View>
+                    {loadingUsers ? (
+                        <ActivityIndicator style={{ marginTop: 20 }} color="#ff914c" />
+                    ) : (
+                        <FlatList
+                            data={availableUsers}
+                            keyExtractor={item => item.user_id}
+                            renderItem={renderAvailableUser}
+                            ListEmptyComponent={<Text style={styles.emptyText}>Mọi người đều đã tham gia nhóm!</Text>}
+                        />
+                    )}
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 };
@@ -206,6 +368,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
         borderBottomWidth: 1,
         borderBottomColor: "#eee",
+        paddingTop: 50
     },
     backButton: { padding: 5 },
     headerTitle: { fontSize: 18, fontWeight: "bold", color: "#333" },
@@ -216,7 +379,21 @@ const styles = StyleSheet.create({
         padding: 30,
         marginBottom: 10,
     },
+    avatarWrapper: { position: "relative" },
     largeAvatar: { width: 100, height: 100, borderRadius: 50, marginBottom: 15 },
+    editAvatarBtn: {
+        position: "absolute",
+        bottom: 15,
+        right: 0,
+        backgroundColor: "#ff914c",
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 2,
+        borderColor: "#fff"
+    },
     groupNameText: { fontSize: 22, fontWeight: "bold", color: "#333", marginBottom: 5 },
     memberCountText: { fontSize: 14, color: "#888" },
     section: { backgroundColor: "#fff", padding: 15, marginBottom: 10 },
@@ -243,6 +420,20 @@ const styles = StyleSheet.create({
         borderBottomColor: "#f0f0f0",
     },
     actionText: { fontSize: 16, marginLeft: 15, fontWeight: "500" },
+    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" },
+    optionsCard: { backgroundColor: "#fff", width: "80%", borderRadius: 15, padding: 20 },
+    modalTitle: { fontSize: 18, fontWeight: "bold", textAlign: "center", marginBottom: 20 },
+    optionBtn: { flexDirection: "row", alignItems: "center", paddingVertical: 15 },
+    optionText: { fontSize: 16, marginLeft: 15, color: "#333" },
+    addMemberContainer: { flex: 1, backgroundColor: "#fff", marginTop: 100, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+    addMemberHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottomWidth: 1, borderBottomColor: "#eee" },
+    addMemberTitle: { fontSize: 18, fontWeight: "bold" },
+    cancelText: { color: "#888", fontSize: 16 },
+    addBtnText: { color: "#ff914c", fontSize: 16, fontWeight: "bold" },
+    userItem: { flexDirection: "row", alignItems: "center", padding: 15, borderBottomWidth: 0.5, borderBottomColor: "#f0f0f0" },
+    checkbox: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#ddd", justifyContent: "center", alignItems: "center", marginLeft: "auto" },
+    checkboxSelected: { backgroundColor: "#ff914c", borderColor: "#ff914c" },
+    emptyText: { textAlign: "center", color: "#888", marginTop: 50, fontSize: 14 },
 });
 
 export default GroupDetailsScreen;

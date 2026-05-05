@@ -59,20 +59,16 @@ const CreateGroupScreen = () => {
             Alert.alert("Thông báo", "Vui lòng nhập tên nhóm");
             return;
         }
-        if (selectedUsers.length === 0) {
-            Alert.alert("Thông báo", "Vui lòng chọn ít nhất một thành viên");
+        if (selectedUsers.length < 2) {
+            Alert.alert("Thông báo", "Group chat requires at least 3 members (including you).");
             return;
         }
 
         setCreating(true);
         try {
             const group = await ChatApi.createGroup(groupName, selectedUsers);
-            Alert.alert("Thành công", "Đã tạo nhóm chat", [
-                {
-                    text: "Đến phòng chat",
-                    onPress: () => router.replace(`/chat/${group.conversation_id}?conversationName=${group.name}`),
-                },
-            ]);
+            Alert.alert("Thành công", "Đã tạo nhóm chat");
+            router.replace("/(tabs)/chat");
         } catch (error: any) {
             Alert.alert("Lỗi", error.message || "Không thể tạo nhóm");
         } finally {
@@ -113,7 +109,7 @@ const CreateGroupScreen = () => {
                 <Text style={styles.headerTitle}>Tạo nhóm mới</Text>
                 <TouchableOpacity
                     onPress={handleCreateGroup}
-                    disabled={creating || !groupName.trim() || selectedUsers.length === 0}
+                    disabled={creating || !groupName.trim() || selectedUsers.length < 2}
                 >
                     {creating ? (
                         <ActivityIndicator size="small" color="#ff914c" />

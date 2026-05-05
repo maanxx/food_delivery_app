@@ -43,26 +43,33 @@ const ChatListScreen = () => {
                             return bTime - aTime;
                         });
                     } else {
-                        // New conversation appeared — reload list
                         loadConversations();
                         return prev;
                     }
                 });
             };
 
+            const handleGroupDissolved = (data: any) => {
+                console.log("[ChatList] group_dissolved received:", data);
+                if (!isMounted) return;
+                setConversations((prev) => prev.filter((c) => c.conversationId !== data.conversationId));
+            };
+
             const initSocket = async () => {
                 await SocketService.connect();
                 if (!isMounted) return;
-                console.log("[ChatList] Socket connected, registering conversation_updated listener");
+                console.log("[ChatList] Socket connected, registering listeners");
                 SocketService.on("conversation_updated", handleConversationUpdated);
+                SocketService.on("group_dissolved", handleGroupDissolved);
             };
 
             initSocket();
 
             return () => {
                 isMounted = false;
-                console.log("[ChatList] Cleanup: removing conversation_updated listener");
+                console.log("[ChatList] Cleanup: removing listeners");
                 SocketService.off("conversation_updated", handleConversationUpdated);
+                SocketService.off("group_dissolved", handleGroupDissolved);
             };
         }, [])
     );

@@ -1,12 +1,18 @@
 import { ConversationModel } from "../models/conversationModel";
 import { ConversationParticipantModel } from "../models/conversationParticipantModel";
 import { UserModel } from "../models/User";
+import { ChatService } from "./chatService";
 
 export class GroupService {
     static async createGroup(userId: string, data: { name: string; avatar?: string; participantIds: string[] }) {
         const { name, avatar, participantIds } = data;
 
-        // 1. Create the conversation
+        // 1. Minimum 3 members total (creator + at least 2 others)
+        if (!participantIds || participantIds.length < 2) {
+            throw new Error("Group chat requires at least 3 members.");
+        }
+
+        // 2. Create the conversation
         const conversation = await ConversationModel.create({
             type: "group",
             name,
@@ -14,10 +20,10 @@ export class GroupService {
             creator_id: userId,
         });
 
-        // 2. Add the creator as owner
+        // 3. Add the creator as owner
         await ConversationParticipantModel.addParticipant(conversation.conversation_id, userId, "owner");
 
-        // 3. Add other participants as members
+        // 4. Add other participants as members
         for (const pId of participantIds) {
             if (pId !== userId) {
                 await ConversationParticipantModel.addParticipant(conversation.conversation_id, pId, "member");
@@ -41,6 +47,15 @@ export class GroupService {
             const isAlreadyMember = await ConversationParticipantModel.isMember(conversationId, pId);
             if (!isAlreadyMember) {
                 await ConversationParticipantModel.addParticipant(conversationId, pId, "member");
+                
+                // System notification
+                const user = await UserModel.findById(pId);
+                if (user) {
+                    await ChatService.sendMessage(userId, conversationId, {
+                        content: `${user.fullname || user.username} has been added to the group`,
+                        type: "system"
+                    });
+                }
             }
         }
 
@@ -64,6 +79,16 @@ export class GroupService {
         }
 
         await ConversationParticipantModel.remove(conversationId, targetUserId);
+
+        // System notification
+        const user = await UserModel.findById(targetUserId);
+        if (user) {
+            await ChatService.sendMessage(userId, conversationId, {
+                content: `${user.fullname || user.username} has been removed from the group`,
+                type: "system"
+            });
+        }
+
         return { success: true };
     }
 
@@ -81,7 +106,7 @@ export class GroupService {
         return { success: true };
     }
 
-    static async leaveGroup(userId: string, conversationId: string) {
+    static async leaveGroup(userId: string, conversationId: string, leaveType: "silent" | "notify" = "notify") {
         const participant: any = await ConversationParticipantModel.findByUserIdAndConvId(userId, conversationId);
         if (!participant) throw new Error("Not a member of this group");
 
@@ -90,6 +115,17 @@ export class GroupService {
         }
 
         await ConversationParticipantModel.remove(conversationId, userId);
+
+        if (leaveType === "notify") {
+            const user = await UserModel.findById(userId);
+            if (user) {
+                await ChatService.sendMessage(userId, conversationId, {
+                    content: `${user.fullname || user.username} has left the group`,
+                    type: "system"
+                });
+            }
+        }
+
         return { success: true };
     }
 
@@ -99,12 +135,37 @@ export class GroupService {
             throw new Error("Only owners can dissolve the group");
         }
 
+        // Notify before deleting? Or just delete.
+        // Usually, we notify members.
+        await ChatService.sendMessage(userId, conversationId, {
+            content: "This group has been dissolved by the owner",
+            type: "system"
+        });
+
         await ConversationModel.delete(conversationId);
-        // Optional: mark all participants as inactive
         const members = await ConversationParticipantModel.findMembersOfConversation(conversationId);
         for (const member of members) {
             await ConversationParticipantModel.markAsInactive(conversationId, member.user_id);
         }
+
+        return { 
+            success: true, 
+            memberIds: members.map(m => m.user_id) 
+        };
+    }
+
+    static async updateAvatar(userId: string, conversationId: string, avatarPath: string) {
+        const requester: any = await ConversationParticipantModel.findByUserIdAndConvId(userId, conversationId);
+        if (!requester || (requester.role !== "owner" && requester.role !== "admin")) {
+            throw new Error("Only owners or admins can update group avatar");
+        }
+
+        await ConversationModel.update(conversationId, { avatar_path: avatarPath });
+
+        await ChatService.sendMessage(userId, conversationId, {
+            content: "Group avatar has been updated",
+            type: "system"
+        });
 
         return { success: true };
     }
