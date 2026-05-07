@@ -42,9 +42,17 @@ const RegisterScreen: React.FC = () => {
     const [agreeToTerms, setAgreeToTerms] = useState<boolean>(false);
 
     const handleInputChange = (field: keyof FormData, value: string) => {
+        let sanitizedValue = value;
+        if (field === "phone") {
+            sanitizedValue = value.replace(/\D/g, "");
+            if (sanitizedValue.startsWith("0")) {
+                sanitizedValue = sanitizedValue.substring(1);
+            }
+            sanitizedValue = sanitizedValue.substring(0, 9);
+        }
         setFormData((prev) => ({
             ...prev,
-            [field]: value,
+            [field]: sanitizedValue,
         }));
     };
 
@@ -71,8 +79,8 @@ const RegisterScreen: React.FC = () => {
             return false;
         }
 
-        if (!isValidPhone(phone)) {
-            Alert.alert("Lỗi", "Số điện thoại không hợp lệ");
+        if (phone.length !== 9) {
+            Alert.alert("Lỗi", "Số điện thoại phải gồm đúng 9 số");
             return false;
         }
 
@@ -105,8 +113,7 @@ const RegisterScreen: React.FC = () => {
     };
 
     const isValidPhone = (phone: string): boolean => {
-        const phoneRegex = /^[0-9]{10,11}$/;
-        return phoneRegex.test(phone.replace(/\s/g, ""));
+        return /^[0-9]{9}$/.test(phone);
     };
 
     const handleRegister = async () => {
@@ -210,12 +217,12 @@ const RegisterScreen: React.FC = () => {
                                 <Ionicons name="call-outline" size={20} color="#666" style={styles.inputIcon} />
                                 <TextInput
                                     style={styles.textInput}
-                                    placeholder="Nhập số điện thoại"
+                                    placeholder="909943237"
                                     placeholderTextColor="#999"
                                     value={formData.phone}
                                     onChangeText={(value) => handleInputChange("phone", value)}
                                     keyboardType="phone-pad"
-                                    maxLength={11}
+                                    maxLength={9}
                                 />
                             </View>
                         </View>

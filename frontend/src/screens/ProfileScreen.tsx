@@ -97,9 +97,8 @@ const ProfileScreen = () => {
         }
 
         // Phone validation
-        const phoneRegex = /^[0-9]{10,11}$/;
-        if (!phoneRegex.test(profileForm.phone_number.replace(/\D/g, ""))) {
-            Alert.alert("Lỗi", "Số điện thoại không hợp lệ");
+        if (profileForm.phone_number.length !== 9) {
+            Alert.alert("Lỗi", "Số điện thoại phải gồm đúng 9 số");
             return;
         }
 
@@ -398,9 +397,14 @@ const ProfileScreen = () => {
                                 <TextInput
                                     style={styles.fieldValue}
                                     value={profileForm.phone_number}
-                                    onChangeText={(text) => setProfileForm((prev) => ({ ...prev, phone_number: text }))}
-                                    placeholder="Nhập số điện thoại"
+                                    onChangeText={(text) => {
+                                        let val = text.replace(/\D/g, "");
+                                        if (val.startsWith("0")) val = val.substring(1);
+                                        setProfileForm((prev) => ({ ...prev, phone_number: val.substring(0, 9) }));
+                                    }}
+                                    placeholder="909943237"
                                     keyboardType="phone-pad"
+                                    maxLength={9}
                                 />
                             ) : (
                                 <Text style={styles.fieldValue}>{user?.phone_number || "Chưa cập nhật"}</Text>

@@ -101,77 +101,73 @@ class ChatApi {
         return this.fetchWithAuth(API_CONFIG.ENDPOINTS.AUTH.USERS);
     }
 
-    async deleteForMe(messageId: string, conversationId: string) {
-        return this.fetchWithAuth(`/api/messages/${messageId}/delete-for-me`, {
+    async deleteMessage(conversationId: string, messageId: string) {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/${messageId}`, {
             method: "DELETE",
-            body: JSON.stringify({ conversationId }),
-        });
-    }
-
-    async deleteForEveryone(messageId: string, conversationId: string) {
-        return this.fetchWithAuth(`/api/messages/${messageId}/delete-for-everyone`, {
-            method: "DELETE",
-            body: JSON.stringify({ conversationId }),
         });
     }
 
     async recallMessage(messageId: string, conversationId: string) {
-        return this.fetchWithAuth(`/api/messages/${messageId}/recall`, {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/${messageId}/recall`, {
             method: "PUT",
-            body: JSON.stringify({ conversationId }),
         });
-    }
-
-    async deleteMessage(conversationId: string, messageId: string, forEveryone = false) {
-        if (forEveryone) return this.deleteForEveryone(messageId, conversationId);
-        return this.deleteForMe(messageId, conversationId);
     }
 
     // Group management
-    async createGroup(name: string, participantIds: string[], avatar?: string) {
-        return this.fetchWithAuth("/api/groups/create", {
+    async createGroup(name: string, participantIds: string[], avatar?: any) {
+        const formData = new FormData();
+        formData.append("name", name);
+        formData.append("participantIds", JSON.stringify(participantIds));
+        if (avatar) {
+            formData.append("avatar", avatar);
+        }
+
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/group`, {
             method: "POST",
-            body: JSON.stringify({ name, participantIds, avatar }),
+            body: formData,
         });
     }
 
-    async addMember(conversationId: string, participantIds: string[]) {
-        return this.fetchWithAuth(`/api/groups/${conversationId}/add-member`, {
+    async addMember(conversationId: string, memberId: string) {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/members`, {
             method: "POST",
-            body: JSON.stringify({ participantIds }),
+            body: JSON.stringify({ memberId }),
         });
     }
 
-    async removeMember(conversationId: string, userId: string) {
-        return this.fetchWithAuth(`/api/groups/${conversationId}/remove-member/${userId}`, {
+    async removeMember(conversationId: string, memberId: string) {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/members`, {
+            method: "DELETE",
+            body: JSON.stringify({ memberId }),
+        });
+    }
+
+    async leaveGroup(conversationId: string) {
+        // Leaving is often implemented as removing oneself
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/members/leave`, {
             method: "DELETE",
         });
     }
 
-    async leaveGroup(conversationId: string, leaveType: "silent" | "notify" = "notify") {
-        return this.fetchWithAuth(`/api/groups/${conversationId}/leave`, {
-            method: "DELETE",
-            body: JSON.stringify({ leaveType }),
-        });
-    }
-
-    async updateGroupAvatar(conversationId: string, avatarPath: string) {
-        return this.fetchWithAuth(`/api/groups/${conversationId}/avatar`, {
+    async updateGroupAvatar(conversationId: string, avatar: any) {
+        const formData = new FormData();
+        formData.append("avatar", avatar);
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}`, {
             method: "PUT",
-            body: JSON.stringify({ avatarPath }),
+            body: formData,
         });
     }
 
     async dissolveGroup(conversationId: string) {
-        return this.fetchWithAuth(`/api/groups/${conversationId}/dissolve`, {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/disband`, {
             method: "DELETE",
         });
     }
 
-    async assignRole(conversationId: string, targetUserId: string, role: string) {
-        return this.fetchWithAuth(`/api/groups/${conversationId}/assign-role`, {
+    async assignRole(conversationId: string, memberId: string, role: "admin" | "member") {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/members/role`, {
             method: "PUT",
-            body: JSON.stringify({ targetUserId, role }),
+            body: JSON.stringify({ memberId, role }),
         });
     }
 }

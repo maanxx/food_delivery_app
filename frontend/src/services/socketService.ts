@@ -35,9 +35,9 @@ class SocketService {
         }
 
         this.isConnecting = true;
-        console.log("[Socket] Connecting to", API_CONFIG.BASE_URL);
+        console.log("[Socket] Connecting to", API_CONFIG.SOCKET_URL);
 
-        this.socket = io(API_CONFIG.BASE_URL, {
+        this.socket = io(API_CONFIG.SOCKET_URL, {
             auth: { token },
             transports: ["websocket", "polling"],
             reconnection: true,

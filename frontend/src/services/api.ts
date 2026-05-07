@@ -22,7 +22,7 @@ class ApiClient {
     private baseURL: string;
 
     constructor() {
-        console.log("BASE_URL: " + API_CONFIG.BASE_URL);
+        console.log("[ApiClient] Initialized with BASE_URL:", API_CONFIG.BASE_URL);
         this.baseURL = API_CONFIG.BASE_URL;
     }
 
@@ -30,7 +30,7 @@ class ApiClient {
         try {
             return await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
         } catch (error) {
-            console.error("Error getting access token:", error);
+            console.error("[ApiClient] Error getting access token:", error);
             return null;
         }
     }
@@ -39,7 +39,7 @@ class ApiClient {
         try {
             return await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
         } catch (error) {
-            console.error("Error getting refresh token:", error);
+            console.error("[ApiClient] Error getting refresh token:", error);
             return null;
         }
     }
@@ -50,8 +50,9 @@ class ApiClient {
                 [STORAGE_KEYS.ACCESS_TOKEN, tokens.accessToken],
                 [STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken],
             ]);
+            console.log("[ApiClient] Tokens saved to storage");
         } catch (error) {
-            console.error("Error setting tokens:", error);
+            console.error("[ApiClient] Error setting tokens:", error);
         }
     }
 
@@ -62,16 +63,18 @@ class ApiClient {
                 STORAGE_KEYS.REFRESH_TOKEN,
                 STORAGE_KEYS.USER_DATA,
             ]);
+            console.log("[ApiClient] Tokens cleared from storage");
         } catch (error) {
-            console.error("Error clearing tokens:", error);
+            console.error("[ApiClient] Error clearing tokens:", error);
         }
     }
 
     private async setUserData(user: User): Promise<void> {
         try {
             await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(user));
+            console.log("[ApiClient] User data saved to storage");
         } catch (error) {
-            console.error("Error setting user data:", error);
+            console.error("[ApiClient] Error setting user data:", error);
         }
     }
 
@@ -80,7 +83,7 @@ class ApiClient {
             const userData = await AsyncStorage.getItem(STORAGE_KEYS.USER_DATA);
             return userData ? JSON.parse(userData) : null;
         } catch (error) {
-            console.error("Error getting user data:", error);
+            console.error("[ApiClient] Error getting user data:", error);
             return null;
         }
     }
@@ -90,6 +93,7 @@ class ApiClient {
             const refreshToken = await this.getRefreshToken();
             if (!refreshToken) return false;
 
+            console.log("[ApiClient] Attempting to refresh token...");
             const response = await fetch(`${this.baseURL}${API_CONFIG.ENDPOINTS.AUTH.REFRESH_TOKEN}`, {
                 method: "POST",
                 headers: {
@@ -98,30 +102,37 @@ class ApiClient {
                 body: JSON.stringify({ refreshToken }),
             });
 
-            const contentType = response.headers.get("content-type");
-            if (!contentType || !contentType.includes("application/json")) {
-                console.error("[Api] Refresh token failed: Server returned non-JSON response");
+            if (!response.ok) {
+                console.error("[ApiClient] Refresh token failed with status:", response.status);
                 return false;
             }
 
-            const data: ApiResponse<{ tokens: AuthTokens }> = await response.json();
+            const data = await response.json();
 
-            if (data.success && data.data?.tokens) {
-                await this.setTokens(data.data.tokens);
+            if (data.success && data.accessToken) {
+                // Backend might return only accessToken or both
+                const tokens: AuthTokens = {
+                    accessToken: data.accessToken,
+                    refreshToken: data.refreshToken || refreshToken, // Use old one if not returned
+                };
+                await this.setTokens(tokens);
+                console.log("[ApiClient] Token refreshed successfully");
                 return true;
             }
 
             return false;
         } catch (error) {
-            console.error("Error refreshing token:", error);
+            console.error("[ApiClient] Error refreshing token:", error);
             return false;
         }
     }
 
     private async makeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+        const url = `${this.baseURL}${endpoint}`;
+        const method = options.method || "GET";
+        
         try {
-            const url = `${this.baseURL}${endpoint}`;
-            console.log("API Request:", url, options.method || "GET");
+            console.log(`[ApiClient] Request: ${method} ${url}`);
             const accessToken = await this.getAccessToken();
 
             const headers: HeadersInit = {
@@ -140,11 +151,13 @@ class ApiClient {
 
             // If unauthorized and we have a refresh token, try to refresh
             if (response.status === 401 && accessToken) {
+                console.log("[ApiClient] 401 Unauthorized, attempting token refresh...");
                 const refreshSuccess = await this.refreshAccessToken();
                 if (refreshSuccess) {
                     const newAccessToken = await this.getAccessToken();
                     if (newAccessToken) {
                         headers.Authorization = `Bearer ${newAccessToken}`;
+                        console.log("[ApiClient] Retrying request with new token...");
                         response = await fetch(url, {
                             ...options,
                             headers,
@@ -154,21 +167,39 @@ class ApiClient {
                 }
             }
 
+            if (!response.ok) {
+                console.warn(`[ApiClient] Request failed: ${method} ${endpoint} - Status: ${response.status}`);
+            }
+
             const contentType = response.headers.get("content-type");
             if (!contentType || !contentType.includes("application/json")) {
                 const text = await response.text();
-                console.error(`[Api] Non-JSON response from ${endpoint}:`, text.substring(0, 100));
+                console.error(`[ApiClient] Non-JSON response from ${endpoint}:`, text.substring(0, 200));
                 return {
                     success: false,
-                    message: `Server error (${response.status})`,
+                    message: `Lỗi máy chủ (${response.status})`,
                     errors: ["Server returned non-JSON response"],
                 };
             }
 
-            const data: ApiResponse<T> = await response.json();
-            return data;
+            const data = await response.json();
+            
+            // Normalize backend response to mobile app's expected ApiResponse format
+            // Mobile app expects { success: boolean, data: T, message: string }
+            // Backend often returns { success: boolean, message: string, ...rest } where rest is the data
+            if (data && typeof data === 'object' && !('data' in data)) {
+                // If backend didn't wrap in 'data', we wrap it ourselves for the mobile app's services
+                const { success, message, ...rest } = data;
+                return {
+                    success: success !== undefined ? success : response.ok,
+                    message: message || (response.ok ? "Thành công" : "Thất bại"),
+                    data: rest as unknown as T,
+                };
+            }
+
+            return data as ApiResponse<T>;
         } catch (error) {
-            console.error("API request error:", error);
+            console.error(`[ApiClient] Network error during ${method} ${endpoint}:`, error);
             return {
                 success: false,
                 message: "Lỗi kết nối mạng. Vui lòng kiểm tra kết nối internet.",
@@ -179,31 +210,52 @@ class ApiClient {
 
     // Auth API methods
     async register(registerData: RegisterData): Promise<AuthResponse> {
-        const response = await this.makeRequest<{ user: User; tokens: AuthTokens }>(
+        // Map RegisterData to backend's registerUser expected fields
+        const backendData = {
+            username: registerData.fullname,
+            phone: registerData.phone_number,
+            email: registerData.email,
+            password: registerData.password,
+            countryCode: registerData.country_code || "+84",
+        };
+
+        const response = await this.makeRequest<any>(
             API_CONFIG.ENDPOINTS.AUTH.REGISTER,
             {
                 method: "POST",
-                body: JSON.stringify(registerData),
+                body: JSON.stringify(backendData),
             },
         );
 
         if (response.success && response.data) {
-            await this.setTokens(response.data.tokens);
-            await this.setUserData(response.data.user);
+            const { accessToken, refreshToken, user } = response.data;
+            if (accessToken && refreshToken) {
+                await this.setTokens({ accessToken, refreshToken });
+            }
+            if (user) {
+                await this.setUserData(user);
+            }
         }
 
         return response as AuthResponse;
     }
 
     async login(credentials: LoginCredentials): Promise<AuthResponse> {
-        const response = await this.makeRequest<{ user: User; tokens: AuthTokens }>(API_CONFIG.ENDPOINTS.AUTH.LOGIN, {
+        // The mobile app sends { email, password }
+        // Our modified backend now supports { email, password } or { phone, countryCode, password }
+        const response = await this.makeRequest<any>(API_CONFIG.ENDPOINTS.AUTH.LOGIN, {
             method: "POST",
             body: JSON.stringify(credentials),
         });
 
         if (response.success && response.data) {
-            await this.setTokens(response.data.tokens);
-            await this.setUserData(response.data.user);
+            const { accessToken, refreshToken, user } = response.data;
+            if (accessToken && refreshToken) {
+                await this.setTokens({ accessToken, refreshToken });
+            }
+            if (user) {
+                await this.setUserData(user);
+            }
         }
 
         return response as AuthResponse;
@@ -221,6 +273,7 @@ class ApiClient {
     }
 
     async getProfile(): Promise<ApiResponse<{ user: User }>> {
+        // Backend /api/user/profile returns the user object directly or { user: ... }
         return await this.makeRequest<{ user: User }>(API_CONFIG.ENDPOINTS.AUTH.PROFILE);
     }
 
@@ -231,23 +284,36 @@ class ApiClient {
         });
 
         if (response.success && response.data) {
-            await this.setUserData(response.data.user);
+            // Profile updates might return the user directly
+            const user = response.data.user || (response.data as unknown as User);
+            await this.setUserData(user);
         }
 
         return response;
     }
 
     async changePassword(passwordData: ChangePasswordData): Promise<ApiResponse> {
+        // Backend uses /api/user/password (PUT)
+        // passwordData is { currentPassword, newPassword, confirmPassword }
+        // Backend expects { old_password, new_password }
+        const backendData = {
+            old_password: passwordData.currentPassword,
+            new_password: passwordData.newPassword,
+        };
+
         return await this.makeRequest(API_CONFIG.ENDPOINTS.AUTH.CHANGE_PASSWORD, {
-            method: "POST",
-            body: JSON.stringify(passwordData),
+            method: "PUT",
+            body: JSON.stringify(backendData),
         });
     }
 
     async forgotPassword(forgotData: ForgotPasswordData): Promise<ApiResponse> {
+        // Backend uses /api/auth/forgot-password/send-otp
+        // forgotData is { email }
+        // Backend expects { info: email/phone }
         return await this.makeRequest(API_CONFIG.ENDPOINTS.AUTH.FORGOT_PASSWORD, {
             method: "POST",
-            body: JSON.stringify(forgotData),
+            body: JSON.stringify({ info: forgotData.email }),
         });
     }
 
