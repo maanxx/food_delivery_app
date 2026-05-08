@@ -79,6 +79,15 @@ class SocketService {
             "message_deleted_for_me",
             "message_deleted_for_everyone",
             "message_recalled",
+            "message_read",
+            "message_edited",
+            "reaction_added",
+            "reaction_removed",
+            "group_dissolved",
+            "call_request",
+            "call_response",
+            "webrtc_signal",
+            "call_ended",
         ];
 
         events.forEach((event) => {
@@ -136,6 +145,22 @@ class SocketService {
 
     emitStopTyping(conversationId: string) {
         this.socket?.emit("stop_typing", { conversationId });
+    }
+
+    emitCallRequest(data: { conversationId: string, type: "voice" | "video", participants: string[] }) {
+        this.socket?.emit("call_request", data);
+    }
+
+    emitCallResponse(data: { callId: string, status: "accepted" | "rejected" | "busy" }) {
+        this.socket?.emit("call_response", data);
+    }
+
+    emitWebRTCSignal(data: { callId: string, signal: any, targetId?: string }) {
+        this.socket?.emit("webrtc_signal", data);
+    }
+
+    emitCallEnd(data: { callId: string }) {
+        this.socket?.emit("call_ended", data);
     }
 
     on(event: string, callback: Function) {

@@ -11,6 +11,7 @@ import {
     Alert,
     ScrollView,
     Modal,
+    TextInput,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -55,10 +56,18 @@ const GroupDetailsScreen = () => {
         loadDetails();
     }, [id]);
 
-    const loadAvailableUsers = async () => {
+    const [userSearchQuery, setUserSearchQuery] = useState("");
+    
+    const loadAvailableUsers = async (query: string) => {
+        if (!query.trim()) {
+            setAvailableUsers([]);
+            setLoadingUsers(false);
+            return;
+        }
+
         setLoadingUsers(true);
         try {
-            const users = await ChatApi.getAvailableUsers();
+            const users = await ChatApi.getAvailableUsers(query);
             // Filter out existing members
             const memberIds = group.participants.map((p: any) => p.userId);
             setAvailableUsers(users.filter((u: any) => !memberIds.includes(u.user_id)));
@@ -70,8 +79,20 @@ const GroupDetailsScreen = () => {
     };
 
     useEffect(() => {
-        if (showAddModal) loadAvailableUsers();
+        if (showAddModal) {
+            setUserSearchQuery("");
+            setAvailableUsers([]);
+        }
     }, [showAddModal]);
+
+    const handleUserSearch = (text: string) => {
+        setUserSearchQuery(text);
+        if (text.trim().length >= 1) {
+            loadAvailableUsers(text);
+        } else {
+            setAvailableUsers([]);
+        }
+    };
 
     const isOwner = group?.participants?.find((p: any) => p.userId === (currentUser?.user_id || currentUser?.id))?.role === "owner";
     const isAdmin = isOwner || group?.participants?.find((p: any) => p.userId === (currentUser?.user_id || currentUser?.id))?.role === "admin";
@@ -341,6 +362,17 @@ const GroupDetailsScreen = () => {
                             <Text style={[styles.addBtnText, selectedUsers.length === 0 && { color: "#ccc" }]}>Thêm</Text>
                         </TouchableOpacity>
                     </View>
+
+                    <View style={styles.modalSearchContainer}>
+                        <Ionicons name="search" size={20} color="#888" />
+                        <TextInput
+                            style={styles.modalSearchInput}
+                            placeholder="Tìm kiếm thành viên..."
+                            value={userSearchQuery}
+                            onChangeText={handleUserSearch}
+                            autoCapitalize="none"
+                        />
+                    </View>
                     {loadingUsers ? (
                         <ActivityIndicator style={{ marginTop: 20 }} color="#ff914c" />
                     ) : (
@@ -348,7 +380,13 @@ const GroupDetailsScreen = () => {
                             data={availableUsers}
                             keyExtractor={item => item.user_id}
                             renderItem={renderAvailableUser}
-                            ListEmptyComponent={<Text style={styles.emptyText}>Mọi người đều đã tham gia nhóm!</Text>}
+                            ListEmptyComponent={
+                                <Text style={styles.emptyText}>
+                                    {userSearchQuery.trim() 
+                                        ? "Không tìm thấy người dùng nào." 
+                                        : "Nhập tên hoặc email để tìm kiếm bạn bè."}
+                                </Text>
+                            }
                         />
                     )}
                 </View>
@@ -434,6 +472,20 @@ const styles = StyleSheet.create({
     checkbox: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#ddd", justifyContent: "center", alignItems: "center", marginLeft: "auto" },
     checkboxSelected: { backgroundColor: "#ff914c", borderColor: "#ff914c" },
     emptyText: { textAlign: "center", color: "#888", marginTop: 50, fontSize: 14 },
+    modalSearchContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#f5f5f5",
+        margin: 15,
+        paddingHorizontal: 15,
+        borderRadius: 10,
+        height: 40,
+    },
+    modalSearchInput: {
+        flex: 1,
+        marginLeft: 10,
+        fontSize: 15,
+    },
 });
 
 export default GroupDetailsScreen;

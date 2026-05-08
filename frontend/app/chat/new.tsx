@@ -8,35 +8,45 @@ const NewChatScreen = () => {
     const router = useRouter();
     const [users, setUsers] = useState<any[]>([]);
     const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
-    useEffect(() => {
-        const loadUsers = async () => {
-            try {
-                const data = await ChatApi.getAvailableUsers();
-                setUsers(data);
-                setFilteredUsers(data);
-            } catch (error) {
-                console.error("Failed to load users:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+    const loadUsers = async (query: string) => {
+        if (!query.trim()) {
+            setUsers([]);
+            setFilteredUsers([]);
+            setLoading(false);
+            return;
+        }
 
-        loadUsers();
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await ChatApi.getAvailableUsers(query);
+            setUsers(data || []);
+            setFilteredUsers(data || []);
+        } catch (error: any) {
+            console.error("Failed to load users:", error);
+            setError(error.message || "Không thể tải danh sách người dùng");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        // Initially show nothing or load a small subset if available
+        setLoading(false);
     }, []);
 
     const handleSearch = (text: string) => {
         setSearchQuery(text);
-        if (text) {
-            const filtered = users.filter(user => 
-                user.fullname?.toLowerCase().includes(text.toLowerCase()) || 
-                user.email?.toLowerCase().includes(text.toLowerCase())
-            );
-            setFilteredUsers(filtered);
+        if (text.trim().length >= 1) {
+            loadUsers(text);
         } else {
-            setFilteredUsers(users);
+            setUsers([]);
+            setFilteredUsers([]);
+            setLoading(false);
+            setError(null);
         }
     };
 
@@ -125,6 +135,14 @@ const NewChatScreen = () => {
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color="#FF4B3A" />
                 </View>
+            ) : error ? (
+                <View style={styles.errorContainer}>
+                    <Ionicons name="alert-circle-outline" size={60} color="#ff4d4d" />
+                    <Text style={styles.errorText}>{error}</Text>
+                    <TouchableOpacity style={styles.retryButton} onPress={() => loadUsers(searchQuery)}>
+                        <Text style={styles.retryText}>Thử lại</Text>
+                    </TouchableOpacity>
+                </View>
             ) : (
                 <FlatList
                     data={filteredUsers}
@@ -135,7 +153,9 @@ const NewChatScreen = () => {
                         <View style={styles.emptyContainer}>
                             <Ionicons name="people-outline" size={60} color="#ccc" />
                             <Text style={styles.emptyText}>
-                                {searchQuery ? "Không tìm thấy người dùng nào." : "Không có người dùng khả dụng."}
+                                {searchQuery.trim() 
+                                    ? "Không tìm thấy người dùng nào." 
+                                    : "Nhập tên hoặc email để tìm kiếm bạn bè."}
                             </Text>
                         </View>
                     }
@@ -248,6 +268,29 @@ const styles = StyleSheet.create({
         marginTop: 10,
         fontSize: 16,
         color: "#888",
+    },
+    errorContainer: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 20,
+    },
+    errorText: {
+        marginTop: 10,
+        fontSize: 16,
+        color: "#ff4d4d",
+        textAlign: "center",
+    },
+    retryButton: {
+        marginTop: 20,
+        paddingHorizontal: 30,
+        paddingVertical: 10,
+        backgroundColor: "#FF4B3A",
+        borderRadius: 20,
+    },
+    retryText: {
+        color: "#fff",
+        fontWeight: "bold",
     },
 });
 

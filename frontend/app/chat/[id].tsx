@@ -25,19 +25,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import EmojiSelector, { Categories } from "react-native-emoji-selector";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
-import { Video, ResizeMode } from "expo-av";
+import { Video, ResizeMode, Audio } from "expo-av";
 import API_CONFIG from "../../src/configs/api";
-import dynamic from "next/dynamic";
-
-// Web Emoji Picker
-let WebEmojiPicker: any = null;
-if (Platform.OS === "web") {
-    try {
-        WebEmojiPicker = require("emoji-picker-react").default || require("emoji-picker-react");
-    } catch (e) {
-        console.warn("emoji-picker-react not loaded", e);
-    }
-}
+import * as Haptics from "expo-haptics";
 
 const { width } = Dimensions.get("window");
 
@@ -51,7 +41,7 @@ const ChatDetailScreen = () => {
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState("");
     const [userId, setUserId] = useState<string | null>(null);
-    const userIdRef = useRef<string | null>(null); // stable ref for use in socket callbacks
+    const userIdRef = useRef<string | null>(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
@@ -61,9 +51,27 @@ const ChatDetailScreen = () => {
     const [pendingMedia, setPendingMedia] = useState<any[]>([]);
     const [showPreviewModal, setShowPreviewModal] = useState(false);
     const [conversation, setConversation] = useState<any>(null);
+    
+    // Forward State
     const [showForwardModal, setShowForwardModal] = useState(false);
     const [conversations, setConversations] = useState<any[]>([]);
+    const [forwardLoading, setForwardLoading] = useState(false);
+    
+    const [typingUsers, setTypingUsers] = useState<Record<string, { name: string, timestamp: number }>>({});
+    const [editingMessage, setEditingMessage] = useState<any>(null);
+    const [replyingToMessage, setReplyingToMessage] = useState<any>(null);
+    const [showMentionList, setShowMentionList] = useState(false);
+    const [mentionQuery, setMentionQuery] = useState("");
+    const [mentions, setMentions] = useState<string[]>([]);
+    
+    const [recording, setRecording] = useState<Audio.Recording | null>(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordDuration, setRecordDuration] = useState(0);
+    const recordTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const flatListRef = useRef<FlatList>(null);
+
+    const COMMON_EMOJIS = ["❤️", "😂", "😮", "😢", "😡", "👍"];
 
     useEffect(() => {
         const fetchUserId = async () => {
@@ -72,27 +80,25 @@ const ChatDetailScreen = () => {
                 const parsed = JSON.parse(userData);
                 const id = parsed.user_id || parsed.id;
                 setUserId(id);
-                userIdRef.current = id; // keep ref in sync
+                userIdRef.current = id;
             }
         };
         fetchUserId();
     }, []);
 
-    // Load message history and conversation details
     useEffect(() => {
-        if (!conversationId) {
-            console.warn("[ChatDetail] No conversationId provided");
-            return;
-        }
+        if (!conversationId) return;
         const loadData = async () => {
             try {
-                console.log("[ChatDetail] Fetching data for:", conversationId);
                 const [msgData, convDetails] = await Promise.all([
                     ChatApi.getMessages(conversationId),
                     ChatApi.getConversationDetails(conversationId)
                 ]);
                 
-                setMessages(msgData.messages || []);
+                const sortedMessages = (msgData.messages || []).sort((a: any, b: any) => 
+                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                );
+                setMessages(sortedMessages);
                 setConversation(convDetails);
             } catch (error) {
                 console.error("[ChatDetail] Failed to load data:", error);
@@ -101,32 +107,28 @@ const ChatDetailScreen = () => {
         loadData();
     }, [conversationId]);
 
-    // Socket connection & real-time listener lifecycle
-    // Only depends on conversationId — userId comes from the stable ref, not state
     useEffect(() => {
         if (!conversationId) return;
 
         let isMounted = true;
 
         const handleNewMessage = (message: any) => {
-            console.log("[ChatDetail] new_message received:", message);
-            if (!isMounted) return;
-            // Filter: only show messages belonging to this conversation
-            if (message.conversationId && message.conversationId !== conversationId) return;
-            setMessages((prev) => {
-                // Deduplicate by messageId
-                if (prev.some((m) => m.messageId === message.messageId)) return prev;
-                return [message, ...prev];
-            });
-            // Auto-mark as read for messages from others
-            if (message.senderId && message.senderId !== userIdRef.current) {
-                ChatApi.markMessagesAsRead(conversationId, [message.messageId]).catch(() => {});
+            if (message.conversationId === conversationId) {
+                setMessages((prev) => {
+                    if (prev.some((m) => m.messageId === message.messageId)) return prev;
+                    return [message, ...prev];
+                });
+                if (message.senderId && message.senderId !== userIdRef.current) {
+                    ChatApi.markMessagesAsRead(conversationId, [message.messageId]).catch(() => {});
+                }
             }
         };
 
-        const handleMessageDeletedForMe = (data: any) => {
+        const handleMessageEdited = (data: any) => {
             if (data.conversationId === conversationId) {
-                setMessages((prev) => prev.filter((m) => m.messageId !== data.messageId));
+                setMessages((prev) => 
+                    prev.map((m) => m.messageId === data.messageId ? { ...m, content: data.content, isEdited: true, editedAt: data.editedAt } : m)
+                );
             }
         };
 
@@ -146,54 +148,126 @@ const ChatDetailScreen = () => {
             }
         };
 
-        const handleGroupDissolved = (data: any) => {
+        const handleMessageRead = (data: any) => {
             if (data.conversationId === conversationId) {
-                Alert.alert("Thông báo", "Nhóm này đã bị giải tán bởi trưởng nhóm.");
-                router.replace("/(tabs)/chat");
+                const readIds = data.messageIds || [data.messageId];
+                setMessages((prev) => 
+                    prev.map((m) => readIds.includes(m.messageId) ? { ...m, isRead: true } : m)
+                );
+            }
+        };
+
+        const handleUserTyping = (data: any) => {
+            if (data.conversationId === conversationId && data.userId !== userIdRef.current) {
+                const p = conversation?.participants?.find((p: any) => p.userId === data.userId);
+                const name = p?.fullname || "Ai đó";
+                setTypingUsers(prev => ({ ...prev, [data.userId]: { name, timestamp: Date.now() } }));
+            }
+        };
+
+        const handleUserStopTyping = (data: any) => {
+            if (data.conversationId === conversationId) {
+                setTypingUsers(prev => {
+                    const next = { ...prev };
+                    delete next[data.userId];
+                    return next;
+                });
+            }
+        };
+
+        const handleReactionAdded = (data: any) => {
+            if (data.conversationId === conversationId) {
+                setMessages(prev => prev.map(m => m.messageId === data.messageId ? { ...m, reactions: data.reactions } : m));
+            }
+        };
+
+        const handleReactionRemoved = (data: any) => {
+            if (data.conversationId === conversationId) {
+                setMessages(prev => prev.map(m => m.messageId === data.messageId ? { ...m, reactions: data.reactions } : m));
             }
         };
 
         const initSocket = async () => {
-            console.log("[ChatDetail] Connecting socket and joining room:", conversationId);
             await SocketService.connect();
             if (!isMounted) return;
             SocketService.joinConversation(conversationId);
             SocketService.on("new_message", handleNewMessage);
-            SocketService.on("message_deleted_for_me", handleMessageDeletedForMe);
+            SocketService.on("message_edited", handleMessageEdited);
             SocketService.on("message_deleted_for_everyone", handleMessageDeletedForEveryone);
             SocketService.on("message_recalled", handleMessageRecalled);
-            SocketService.on("group_dissolved", handleGroupDissolved);
-
-            console.log("[ChatDetail] Socket listener registered for events");
+            SocketService.on("message_read", handleMessageRead);
+            SocketService.on("user_typing", handleUserTyping);
+            SocketService.on("user_stop_typing", handleUserStopTyping);
+            SocketService.on("reaction_added", handleReactionAdded);
+            SocketService.on("reaction_removed", handleReactionRemoved);
         };
 
         initSocket();
 
         return () => {
             isMounted = false;
-            console.log("[ChatDetail] Cleanup: leaving room and removing listeners");
             SocketService.leaveConversation(conversationId);
             SocketService.off("new_message", handleNewMessage);
-            SocketService.off("message_deleted_for_me", handleMessageDeletedForMe);
+            SocketService.off("message_edited", handleMessageEdited);
             SocketService.off("message_deleted_for_everyone", handleMessageDeletedForEveryone);
             SocketService.off("message_recalled", handleMessageRecalled);
-            SocketService.off("group_dissolved", handleGroupDissolved);
+            SocketService.off("message_read", handleMessageRead);
+            SocketService.off("user_typing", handleUserTyping);
+            SocketService.off("user_stop_typing", handleUserStopTyping);
+            SocketService.off("reaction_added", handleReactionAdded);
+            SocketService.off("reaction_removed", handleReactionRemoved);
         };
-    }, [conversationId]); // ← removed userId from deps: use userIdRef.current inside instead
+    }, [conversationId, conversation]);
+
+    const handleInputChange = (text: string) => {
+        setInputText(text);
+        
+        // Mention detection
+        const words = text.split(/\s/);
+        const lastWord = words[words.length - 1];
+        if (lastWord.startsWith("@")) {
+            setMentionQuery(lastWord.slice(1).toLowerCase());
+            setShowMentionList(true);
+        } else {
+            setShowMentionList(false);
+        }
+
+        SocketService.emitTyping(conversationId);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
+            SocketService.emitStopTyping(conversationId);
+        }, 2000);
+    };
 
     const handleSend = async (content = inputText, type = "text", attachments: any[] = [], metadata = {}) => {
         if (!content.trim() && attachments.length === 0) return;
-
         const messageContent = content.trim();
-        if (type === "text") setInputText("");
+
+        if (editingMessage && type === "text") {
+            try {
+                await ChatApi.editMessage(conversationId, editingMessage.messageId, messageContent);
+                setEditingMessage(null);
+                setInputText("");
+            } catch (error: any) {
+                Alert.alert("Lỗi", error.message);
+            }
+            return;
+        }
+        
+        if (type === "text") {
+            setInputText("");
+            setMentions([]);
+        }
 
         try {
-            await ChatApi.sendMessage(conversationId, messageContent, type, { 
-                ...metadata,
-                attachments 
-            });
-        } catch (error) {
-            console.error("Failed to send message:", error);
+            const finalMetadata = { ...metadata, attachments, mentions: mentions.length > 0 ? mentions : undefined };
+            if (replyingToMessage) {
+                finalMetadata.replyToId = replyingToMessage.messageId;
+                setReplyingToMessage(null);
+            }
+            await ChatApi.sendMessage(conversationId, messageContent, type, finalMetadata);
+        } catch (error: any) {
+            Alert.alert("Lỗi", error.message);
         }
     };
 
@@ -204,7 +278,6 @@ const ChatDetailScreen = () => {
             allowsMultipleSelection: true,
             quality: 1,
         });
-
         if (!result.canceled) {
             setPendingMedia(result.assets);
             setShowPreviewModal(true);
@@ -213,135 +286,203 @@ const ChatDetailScreen = () => {
 
     const takePhoto = async () => {
         setShowAttachmentMenu(false);
-        const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-        if (permissionResult.granted === false) {
-            alert("Permission to access camera is required!");
-            return;
-        }
-
-        const result = await ImagePicker.launchCameraAsync({
-            quality: 1,
-        });
-
+        const { granted } = await ImagePicker.requestCameraPermissionsAsync();
+        if (!granted) return;
+        const result = await ImagePicker.launchCameraAsync({ quality: 1 });
         if (!result.canceled) {
-            uploadFile(result.assets[0]);
+            setPendingMedia(result.assets);
+            setShowPreviewModal(true);
         }
     };
 
     const pickDocument = async () => {
         setShowAttachmentMenu(false);
-        try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: "*/*",
-                copyToCacheDirectory: true,
-            });
-
-            if (!result.canceled) {
-                uploadFile(result.assets[0]);
-            }
-        } catch (err) {
-            console.error("Document picking error:", err);
+        const result = await DocumentPicker.getDocumentAsync({ type: "*/*" });
+        if (!result.canceled) {
+            uploadFile(result.assets[0]);
         }
     };
 
     const uploadFiles = async () => {
-        if (pendingMedia.length === 0) return;
-        
         setShowPreviewModal(false);
         setIsUploading(true);
-        
         try {
-            const uploadedAttachments = [];
-            
+            const uploaded = [];
             for (const asset of pendingMedia) {
                 const formData = new FormData();
-                const fileName = asset.name || asset.fileName || `upload_${Date.now()}`;
-                const fileType = asset.mimeType || asset.type || "application/octet-stream";
-                
                 formData.append("file", {
                     uri: asset.uri,
-                    name: fileName,
-                    type: fileType,
+                    name: asset.name || asset.fileName || "upload.jpg",
+                    type: asset.mimeType || asset.type || "image/jpeg",
                 } as any);
-
-                const uploadData = await ChatApi.uploadFile(formData);
-                uploadedAttachments.push({
-                    ...uploadData,
-                    type: fileType.startsWith("image") ? "image" : fileType.startsWith("video") ? "video" : "file"
-                });
+                const data = await ChatApi.uploadFile(formData);
+                uploaded.push({ ...data, type: (asset.mimeType || asset.type || "").startsWith("video") ? "video" : "image" });
             }
-            
-            // Determine combined message type
-            const hasVideo = uploadedAttachments.some(a => a.type === "video");
-            const hasImage = uploadedAttachments.some(a => a.type === "image");
-            let msgType = "file";
-            if (hasVideo) msgType = "video";
-            else if (hasImage) msgType = "image";
-
-            await handleSend("", msgType, uploadedAttachments);
+            await handleSend("", uploaded.length > 1 ? "file" : uploaded[0].type, uploaded);
             setPendingMedia([]);
         } catch (error) {
-            console.error("Upload failed:", error);
-            alert("Failed to upload one or more files");
+            Alert.alert("Lỗi", "Không thể tải lên tệp");
         } finally {
             setIsUploading(false);
         }
     };
 
-    const uploadFile = async (fileAsset: any) => {
-        setPendingMedia([fileAsset]);
+    const uploadFile = async (asset: any) => {
+        setPendingMedia([asset]);
         setShowPreviewModal(true);
     };
 
     const handleMessageLongPress = (message: any) => {
-        console.log("[Chat] Long press triggered on message:", message.messageId);
-        if (message.isRecalled || message.deletedForEveryone) {
-            console.log("[Chat] Skipping long press for recalled/deleted message");
-            return;
-        }
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        if (message.isRecalled || message.deletedForEveryone) return;
         setSelectedMessage(message);
         setShowMessageActions(true);
-        console.log("[Chat] showMessageActions set to true");
+    };
+
+    const handleAddReaction = async (emoji: string) => {
+        if (!selectedMessage) return;
+        Haptics.selectionAsync();
+        try {
+            await ChatApi.addReaction(conversationId, selectedMessage.messageId, emoji);
+            setShowMessageActions(false);
+            setSelectedMessage(null);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleReactionToggle = async (messageId: string, emoji: string) => {
+        try {
+            const msg = messages.find(m => m.messageId === messageId);
+            const mine = msg?.reactions?.find((r: any) => r.userId === userId && r.emoji === emoji);
+            if (mine) await ChatApi.removeReaction(conversationId, messageId, emoji);
+            else await ChatApi.addReaction(conversationId, messageId, emoji);
+            setShowMessageActions(false);
+        } catch (error) {
+            console.error(error);
+        }
     };
 
     const handleMessageAction = async (action: string) => {
-        console.log("[Chat] Action selected:", action, "for message:", selectedMessage?.messageId);
         if (!selectedMessage) return;
         setShowMessageActions(false);
-
         try {
             switch (action) {
                 case "delete_me":
                     await ChatApi.deleteMessage(conversationId, selectedMessage.messageId, false);
-                    setMessages((prev) => prev.filter((m) => m.messageId !== selectedMessage.messageId));
+                    setMessages(prev => prev.filter(m => m.messageId !== selectedMessage.messageId));
                     break;
                 case "delete_everyone":
                     await ChatApi.deleteMessage(conversationId, selectedMessage.messageId, true);
-                    // Socket will handle update, but let's update locally for immediate feedback
-                    setMessages((prev) => 
-                        prev.map((m) => m.messageId === selectedMessage.messageId ? { ...m, deletedForEveryone: true, content: "" } : m)
-                    );
                     break;
                 case "recall":
                     await ChatApi.recallMessage(selectedMessage.messageId, conversationId);
-                    setMessages((prev) => 
-                        prev.map((m) => m.messageId === selectedMessage.messageId ? { ...m, isRecalled: true, content: "" } : m)
-                    );
+                    break;
+                case "reply":
+                    setReplyingToMessage(selectedMessage);
+                    break;
+                case "edit":
+                    setEditingMessage(selectedMessage);
+                    setInputText(selectedMessage.content || "");
                     break;
                 case "copy":
                     Clipboard.setString(selectedMessage.content || "");
                     break;
                 case "forward":
-                    const convData = await ChatApi.getConversations();
-                    setConversations(convData.conversations || []);
+                    loadConversationsForForward();
                     setShowForwardModal(true);
                     break;
             }
         } catch (error: any) {
-            Alert.alert("Lỗi", error.message || "Không thể thực hiện hành động");
-        } finally {
-            setSelectedMessage(null);
+            Alert.alert("Lỗi", error.message);
         }
+    };
+
+    const loadConversationsForForward = async () => {
+        try {
+            const data = await ChatApi.getConversations();
+            setConversations(data.conversations || []);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleForwardMessage = async (targetId: string) => {
+        if (!selectedMessage) return;
+        setForwardLoading(true);
+        try {
+            await ChatApi.sendMessage(targetId, selectedMessage.content || "", "forward", {
+                forwardedFromId: userId,
+                originalMessageId: selectedMessage.messageId,
+                attachments: selectedMessage.attachments
+            });
+            setShowForwardModal(false);
+            Alert.alert("Thành công", "Đã chuyển tiếp");
+        } catch (error) {
+            Alert.alert("Lỗi", "Không thể chuyển tiếp");
+        } finally {
+            setForwardLoading(false);
+        }
+    };
+
+    const handleCall = async (type: "voice" | "video") => {
+        if (!conversation) return;
+        const recipient = conversation.participants.find((p: any) => p.userId !== userId);
+        if (!recipient) return;
+        try {
+            await ChatApi.initiateCall(recipient.userId, conversationId, type);
+        } catch (error: any) {
+            Alert.alert("Lỗi", error.message);
+        }
+    };
+
+    const startRecording = async () => {
+        try {
+            await Audio.requestPermissionsAsync();
+            await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+            const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+            setRecording(recording);
+            setIsRecording(true);
+            setRecordDuration(0);
+            recordTimerRef.current = setInterval(() => setRecordDuration(p => p + 1), 1000);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const stopRecording = async () => {
+        if (!recording) return;
+        setIsRecording(false);
+        if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+        try {
+            await recording.stopAndUnloadAsync();
+            const uri = recording.getURI();
+            setRecording(null);
+            if (uri) sendVoiceMessage(uri, recordDuration);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const sendVoiceMessage = async (uri: string, duration: number) => {
+        setIsUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", { uri, name: "voice.m4a", type: "audio/m4a" } as any);
+            await ChatApi.sendMessage(conversationId, "", "voice", { durationSeconds: duration }, formData);
+        } catch (error) {
+            Alert.alert("Lỗi", "Không thể gửi tin nhắn thoại");
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleMentionSelect = (user: any) => {
+        const words = inputText.split(/\s/);
+        words[words.length - 1] = `@${user.fullname || user.username} `;
+        setInputText(words.join(" "));
+        setMentions(prev => [...new Set([...prev, user.userId])]);
+        setShowMentionList(false);
     };
 
     const renderMessage = ({ item }: { item: any }) => {
@@ -443,6 +584,19 @@ const ChatDetailScreen = () => {
                     {conversation?.type === "group" && !isMyMessage && (
                         <Text style={styles.senderName}>{item.senderName || "Unknown"}</Text>
                     )}
+                    {item.replyToId && (
+                        <View style={[styles.replyContainer, isMyMessage ? styles.myReplyContainer : styles.theirReplyContainer]}>
+                            <View style={styles.replyBar} />
+                            <View style={styles.replyContent}>
+                                <Text style={styles.replyName} numberOfLines={1}>
+                                    {item.repliedMessage?.senderName || "Đang tải..."}
+                                </Text>
+                                <Text style={styles.replyText} numberOfLines={1}>
+                                    {item.repliedMessage?.content || "Tin nhắn"}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
                     <TouchableOpacity 
                         onLongPress={() => handleMessageLongPress(item)}
                         delayLongPress={300}
@@ -463,19 +617,71 @@ const ChatDetailScreen = () => {
                         <Text style={[styles.messageText, styles.recalledText]}>
                             This message was deleted
                         </Text>
+                    ) : item.type === "voice" ? (
+                        <VoicePlayer 
+                            url={`${API_CONFIG.BASE_URL}${item.attachments?.[0]?.url || item.metadata?.attachments?.[0]?.url}`} 
+                            duration={item.metadata?.durationSeconds} 
+                        />
                     ) : item.content ? (
                         <Text style={[styles.messageText, isMyMessage ? styles.myMessageText : styles.theirMessageText]}>
-                            {item.content}
+                            {(() => {
+                                // Basic mention highlighting: find @Name and wrap in bold/color
+                                // In a real app, you'd use a more robust parser with mention IDs
+                                const parts = item.content.split(/(@[^\s]+)/g);
+                                return parts.map((part: string, i: number) => {
+                                    if (part.startsWith("@")) {
+                                        return <Text key={i} style={styles.mentionText}>{part}</Text>;
+                                    }
+                                    return part;
+                                });
+                            })()}
                         </Text>
                     ) : null}
-                    <Text style={[styles.messageTime, isMyMessage ? styles.myMessageTime : styles.theirMessageTime]}>
-                        {time}
-                    </Text>
+                    <View style={styles.messageFooter}>
+                        <Text style={[styles.messageTime, isMyMessage ? styles.myMessageTime : styles.theirMessageTime]}>
+                            {time} {item.isEdited && "(Đã sửa)"}
+                        </Text>
+                        {isMyMessage && (
+                            <Ionicons 
+                                name={item.isRead ? "checkmark-done" : "checkmark"} 
+                                size={14} 
+                                color={item.isRead ? "#4fc3f7" : (isMyMessage ? "#eee" : "#888")} 
+                                style={{ marginLeft: 4 }}
+                            />
+                        )}
+                    </View>
                     </TouchableOpacity>
+                    {item.reactions && item.reactions.length > 0 && (
+                        <View style={[styles.reactionsContainer, isMyMessage ? { alignSelf: "flex-end" } : { alignSelf: "flex-start" }]}>
+                            {(() => {
+                                // Group by emoji
+                                const grouped = item.reactions.reduce((acc: any, r: any) => {
+                                    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                                    return acc;
+                                }, {});
+                                
+                                return Object.entries(grouped).map(([emoji, count]: any) => (
+                                    <TouchableOpacity 
+                                        key={emoji} 
+                                        style={[
+                                            styles.reactionBadge,
+                                            item.reactions.some((r: any) => r.userId === userId && r.emoji === emoji) && styles.myReactionBadge
+                                        ]}
+                                        onPress={() => handleReactionToggle(item.messageId, emoji)}
+                                    >
+                                        <Text style={styles.reactionEmoji}>{emoji}</Text>
+                                        {count > 1 && <Text style={styles.reactionCount}>{count}</Text>}
+                                    </TouchableOpacity>
+                                ));
+                            })()}
+                        </View>
+                    )}
                 </View>
             </View>
         );
     };
+
+    const typingText = Object.values(typingUsers).map(u => u.name).join(", ");
 
     return (
         <SafeAreaView style={styles.container}>
@@ -489,13 +695,25 @@ const ChatDetailScreen = () => {
                 />
                 <View style={styles.headerTextContainer}>
                     <Text style={styles.headerName}>{conversationName || conversation?.name}</Text>
-                    <Text style={styles.headerStatus}>{conversation?.type === "group" ? `${conversation?.participants?.length} thành viên` : "Trực tuyến"}</Text>
+                    {typingText ? (
+                        <Text style={[styles.headerStatus, { color: "#FF4B3A" }]}>{typingText} đang nhập...</Text>
+                    ) : (
+                        <Text style={styles.headerStatus}>{conversation?.type === "group" ? `${conversation?.participants?.length} thành viên` : "Trực tuyến"}</Text>
+                    )}
                 </View>
-                {conversation?.type === "group" && (
-                    <TouchableOpacity onPress={() => router.push(`/chat/group-details?id=${conversationId}`)}>
-                        <Ionicons name="information-circle-outline" size={26} color="#333" />
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <TouchableOpacity onPress={() => handleCall("voice")} style={{ marginRight: 15 }}>
+                        <Ionicons name="call-outline" size={24} color="#333" />
                     </TouchableOpacity>
-                )}
+                    <TouchableOpacity onPress={() => handleCall("video")} style={{ marginRight: 15 }}>
+                        <Ionicons name="videocam-outline" size={26} color="#333" />
+                    </TouchableOpacity>
+                    {conversation?.type === "group" && (
+                        <TouchableOpacity onPress={() => router.push(`/chat/group-details?id=${conversationId}`)}>
+                            <Ionicons name="information-circle-outline" size={26} color="#333" />
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
 
             <KeyboardAvoidingView 
@@ -519,6 +737,70 @@ const ChatDetailScreen = () => {
                     </View>
                 )}
 
+                {replyingToMessage && (
+                    <View style={styles.replyPreviewContainer}>
+                        <View style={styles.replyPreviewBar} />
+                        <View style={styles.replyPreviewContent}>
+                            <Text style={styles.replyPreviewName} numberOfLines={1}>
+                                Trả lời: {replyingToMessage.senderName}
+                            </Text>
+                            <Text style={styles.replyPreviewText} numberOfLines={1}>
+                                {replyingToMessage.content}
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setReplyingToMessage(null)}>
+                            <Ionicons name="close-circle" size={20} color="#888" />
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {editingMessage && (
+                    <View style={styles.replyPreviewContainer}>
+                        <View style={[styles.replyPreviewBar, { backgroundColor: "#FF4B3A" }]} />
+                        <View style={styles.replyPreviewContent}>
+                            <Text style={[styles.replyPreviewName, { color: "#FF4B3A" }]}>Đang sửa tin nhắn</Text>
+                            <Text style={styles.replyPreviewText} numberOfLines={1}>
+                                {editingMessage.content}
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => { setEditingMessage(null); setInputText(""); }}>
+                            <Ionicons name="close-circle" size={20} color="#888" />
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {showMentionList && conversation?.type === "group" && (
+                    <View style={styles.mentionListContainer}>
+                        <FlatList
+                            data={conversation.participants.filter((p: any) => 
+                                p.userId !== userId && 
+                                (p.fullname?.toLowerCase().includes(mentionQuery) || p.username?.toLowerCase().includes(mentionQuery))
+                            )}
+                            keyExtractor={(item) => item.userId}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity style={styles.mentionItem} onPress={() => handleMentionSelect(item)}>
+                                    <Image 
+                                        source={item.avatarUrl ? { uri: item.avatarUrl } : require("../../src/assets/images/user-avatar.jpg")} 
+                                        style={styles.mentionAvatar} 
+                                    />
+                                    <Text style={styles.mentionName}>{item.fullname || item.username}</Text>
+                                </TouchableOpacity>
+                            )}
+                            style={{ maxHeight: 200 }}
+                        />
+                    </View>
+                )}
+
+                {isRecording && (
+                    <View style={styles.recordingOverlay}>
+                        <View style={styles.recordingIndicator} />
+                        <Text style={styles.recordingText}>Đang ghi âm... {formatDuration(recordDuration)}</Text>
+                        <TouchableOpacity style={styles.stopRecordingBtn} onPress={stopRecording}>
+                            <Ionicons name="stop" size={20} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+                )}
+
                 <View style={styles.inputContainer}>
                     <TouchableOpacity onPress={() => setShowAttachmentMenu(!showAttachmentMenu)} style={styles.actionButton}>
                         <Ionicons name="add-circle" size={28} color="#FF4B3A" />
@@ -532,7 +814,7 @@ const ChatDetailScreen = () => {
                         style={styles.input}
                         placeholder="Nhắn tin..."
                         value={inputText}
-                        onChangeText={setInputText}
+                        onChangeText={handleInputChange}
                         multiline
                         onFocus={() => setShowEmojiPicker(false)}
                     />
@@ -542,9 +824,17 @@ const ChatDetailScreen = () => {
                             <Ionicons name="send" size={20} color="#fff" />
                         </TouchableOpacity>
                     ) : (
-                        <TouchableOpacity style={styles.actionButton} onPress={pickImage}>
-                            <Ionicons name="camera" size={26} color="#888" />
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: "row" }}>
+                            <TouchableOpacity style={styles.actionButton} onPress={pickImage}>
+                                <Ionicons name="camera" size={26} color="#888" />
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.actionButton, isRecording && { backgroundColor: "#fff5f5" }]} 
+                                onPress={isRecording ? stopRecording : startRecording}
+                            >
+                                <Ionicons name="mic" size={26} color={isRecording ? "#FF4B3A" : "#888"} />
+                            </TouchableOpacity>
+                        </View>
                     )}
                 </View>
 
@@ -680,6 +970,25 @@ const ChatDetailScreen = () => {
                             <View style={styles.actionSheetHandle} />
                         </View>
                         
+                        <View style={styles.reactionPicker}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                {COMMON_EMOJIS.map((emoji) => (
+                                    <TouchableOpacity 
+                                        key={emoji} 
+                                        style={styles.reactionOption}
+                                        onPress={() => handleReactionToggle(selectedMessage!.messageId, emoji)}
+                                    >
+                                        <Text style={styles.reactionOptionEmoji}>{emoji}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </View>
+
+                        <TouchableOpacity style={styles.actionItem} onPress={() => handleMessageAction("reply")}>
+                            <Ionicons name="return-up-back-outline" size={24} color="#333" />
+                            <Text style={styles.actionLabel}>Trả lời</Text>
+                        </TouchableOpacity>
+
                         <TouchableOpacity style={styles.actionItem} onPress={() => handleMessageAction("forward")}>
                             <Ionicons name="arrow-redo-outline" size={24} color="#333" />
                             <Text style={styles.actionLabel}>Chuyển tiếp</Text>
@@ -697,6 +1006,11 @@ const ChatDetailScreen = () => {
 
                         {selectedMessage && userId && selectedMessage.senderId === userId && (
                             <>
+                                <TouchableOpacity style={styles.actionItem} onPress={() => handleMessageAction("edit")}>
+                                    <Ionicons name="create-outline" size={24} color="#333" />
+                                    <Text style={styles.actionLabel}>Sửa tin nhắn</Text>
+                                </TouchableOpacity>
+
                                 <TouchableOpacity style={styles.actionItem} onPress={() => handleMessageAction("delete_everyone")}>
                                     <Ionicons name="trash" size={24} color="#FF4B3A" />
                                     <Text style={[styles.actionLabel, { color: "#FF4B3A" }]}>Xóa với mọi người</Text>
@@ -768,6 +1082,38 @@ const ChatDetailScreen = () => {
                     </View>
                 </SafeAreaView>
             </Modal>
+            {/* Forward Modal */}
+            <Modal visible={showForwardModal} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.forwardContainer}>
+                        <View style={styles.forwardHeader}>
+                            <Text style={styles.forwardTitle}>Chuyển tiếp tới...</Text>
+                            <TouchableOpacity onPress={() => setShowForwardModal(false)}>
+                                <Ionicons name="close" size={24} color="#333" />
+                            </TouchableOpacity>
+                        </View>
+                        <FlatList
+                            data={conversations}
+                            keyExtractor={(item) => item.conversationId}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity 
+                                    style={styles.forwardItem} 
+                                    onPress={() => handleForwardMessage(item.conversationId)}
+                                    disabled={forwardLoading}
+                                >
+                                    <Image 
+                                        source={item.avatarPath ? { uri: item.avatarPath } : (item.type === "group" ? { uri: "https://ui-avatars.com/api/?name=" + encodeURIComponent(item.name) + "&background=ff914c&color=fff" } : require("../../src/assets/images/user-avatar.jpg"))} 
+                                        style={styles.forwardAvatar} 
+                                    />
+                                    <Text style={styles.forwardName}>{item.name}</Text>
+                                    <Ionicons name="send-outline" size={20} color="#ff914c" />
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={<Text style={styles.emptyText}>Không tìm thấy cuộc trò chuyện nào</Text>}
+                        />
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 };
@@ -795,8 +1141,10 @@ const styles = StyleSheet.create({
     theirMessageBubble: { backgroundColor: "#fff", borderBottomLeftRadius: 5, borderWidth: 1, borderColor: "#eee" },
     mediaBubble: { padding: 4, overflow: "hidden" },
     messageText: { fontSize: 15, lineHeight: 20 },
-    myMessageText: { color: "#fff" },
-    theirMessageText: { color: "#333" },
+    messageTime: { fontSize: 10, marginTop: 2 },
+    myMessageTime: { color: "rgba(255,255,255,0.7)" },
+    theirMessageTime: { color: "#888" },
+    messageFooter: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", marginTop: 2 },
     messageImage: { width: width * 0.6, height: width * 0.6, borderRadius: 15, marginBottom: 5 },
     videoContainer: { width: width * 0.6, height: width * 0.4, borderRadius: 15, overflow: "hidden", backgroundColor: "#000", justifyContent: "center", alignItems: "center", marginBottom: 5 },
     messageVideo: { width: "100%", height: "100%" },
@@ -807,7 +1155,42 @@ const styles = StyleSheet.create({
     fileIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#fff", justifyContent: "center", alignItems: "center", marginRight: 10 },
     fileInfo: { flex: 1 },
     fileName: { fontSize: 14, fontWeight: "500", color: "#333" },
-    fileSize: { fontSize: 11, color: "#888" },
+    fileInfoText: { fontSize: 11, color: "#888" }, // Fixed duplicate style name issue
+    replyContainer: { backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 8, flexDirection: "row", marginBottom: 5, overflow: "hidden" },
+    myReplyContainer: { backgroundColor: "rgba(255,255,255,0.15)" },
+    theirReplyContainer: { backgroundColor: "rgba(0,0,0,0.05)" },
+    replyBar: { width: 4, backgroundColor: "#FF4B3A" },
+    replyContent: { padding: 8, flex: 1 },
+    replyName: { fontWeight: "bold", fontSize: 12, color: "#FF4B3A", marginBottom: 2 },
+    replyText: { fontSize: 12, color: "#666" },
+    replyPreviewContainer: { flexDirection: "row", alignItems: "center", padding: 10, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#eee" },
+    replyPreviewBar: { width: 4, height: "100%", backgroundColor: "#FF4B3A", borderRadius: 2 },
+    replyPreviewContent: { flex: 1, paddingHorizontal: 10 },
+    replyPreviewName: { fontWeight: "bold", fontSize: 13, color: "#FF4B3A" },
+    replyPreviewText: { fontSize: 12, color: "#666" },
+    reactionsContainer: { flexDirection: "row", flexWrap: "wrap", marginTop: -5, marginHorizontal: 10, zIndex: 1 },
+    reactionBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 6, paddingVertical: 2, marginRight: 4, marginBottom: 4, borderWidth: 1, borderColor: "#eee", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1 },
+    myReactionBadge: { borderColor: "#FF4B3A", backgroundColor: "#fff5f5" },
+    reactionEmoji: { fontSize: 12 },
+    reactionCount: { fontSize: 10, marginLeft: 2, color: "#666", fontWeight: "bold" },
+    reactionPicker: { flexDirection: "row", paddingVertical: 15, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: "#eee" },
+    reactionOption: { width: (width - 40) / 6, alignItems: "center", justifyContent: "center" },
+    reactionOptionEmoji: { fontSize: 28 },
+    mentionText: { color: "#4fc3f7", fontWeight: "bold" },
+    mentionListContainer: { backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#eee", elevation: 5 },
+    mentionItem: { flexDirection: "row", alignItems: "center", padding: 12, borderBottomWidth: 0.5, borderBottomColor: "#f0f0f0" },
+    mentionAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 10 },
+    mentionName: { fontSize: 14, color: "#333" },
+    voicePlayer: { flexDirection: "row", alignItems: "center", minWidth: width * 0.5, padding: 5 },
+    voicePlayBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#fff", justifyContent: "center", alignItems: "center", marginRight: 10 },
+    voiceProgressContainer: { flex: 1 },
+    voiceProgressBar: { height: 4, backgroundColor: "rgba(0,0,0,0.1)", borderRadius: 2, marginBottom: 5 },
+    voiceProgressFill: { height: "100%", backgroundColor: "#FF4B3A", borderRadius: 2 },
+    voiceTime: { fontSize: 10, color: "#888" },
+    recordingOverlay: { flexDirection: "row", alignItems: "center", padding: 15, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#eee" },
+    recordingIndicator: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#FF4B3A", marginRight: 10 },
+    recordingText: { flex: 1, fontSize: 14, color: "#FF4B3A", fontWeight: "bold" },
+    stopRecordingBtn: { backgroundColor: "#FF4B3A", padding: 8, borderRadius: 20 },
     messageTime: { fontSize: 11, marginTop: 5, alignSelf: "flex-end" },
     myMessageTime: { color: "rgba(255,255,255,0.7)" },
     theirMessageTime: { color: "#999" },

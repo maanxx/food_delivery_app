@@ -5,6 +5,7 @@ import { AuthProvider } from "../src/contexts/AuthContext";
 import { FoodProvider } from "../src/contexts/FoodContext";
 import { CartProvider } from "../src/contexts/CartContext";
 import { AddressProvider } from "../src/contexts/AddressContext";
+import CallOverlay from "../src/components/Chat/CallOverlay";
 
 export default function RootLayout() {
     return (
@@ -21,6 +22,7 @@ export default function RootLayout() {
                                 <Stack.Screen name="add-address" />
                                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                             </Stack>
+                            <CallOverlay />
                         </CartProvider>
                     </FoodProvider>
                 </AddressProvider>

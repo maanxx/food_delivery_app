@@ -97,8 +97,60 @@ class ChatApi {
         });
     }
 
-    async getAvailableUsers() {
-        return this.fetchWithAuth(API_CONFIG.ENDPOINTS.AUTH.USERS);
+    async editMessage(conversationId: string, messageId: string, content: string) {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/${messageId}`, {
+            method: "PUT",
+            body: JSON.stringify({ content }),
+        });
+    }
+
+    async addReaction(conversationId: string, messageId: string, emoji: string) {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/${messageId}/reaction`, {
+            method: "POST",
+            body: JSON.stringify({ emoji }),
+        });
+    }
+
+    async removeReaction(conversationId: string, messageId: string, emoji: string) {
+        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages/${messageId}/reaction`, {
+            method: "DELETE",
+            body: JSON.stringify({ emoji }),
+        });
+    }
+
+    async getAvailableUsers(query: string = "") {
+        if (!query || query.trim() === "") {
+            return [];
+        }
+        const endpoint = `${API_CONFIG.ENDPOINTS.AUTH.USERS}?query=${encodeURIComponent(query.trim())}`;
+        return this.fetchWithAuth(endpoint);
+    }
+
+    // Call APIs
+    async initiateCall(recipientId: string, conversationId: string, callType: "voice" | "video" = "voice") {
+        return this.fetchWithAuth(`/api/calls`, {
+            method: "POST",
+            body: JSON.stringify({ recipientId, conversationId, callType }),
+        });
+    }
+
+    async acceptCall(callId: string) {
+        return this.fetchWithAuth(`/api/calls/${callId}/accept`, {
+            method: "POST",
+        });
+    }
+
+    async rejectCall(callId: string, reason = "user_declined") {
+        return this.fetchWithAuth(`/api/calls/${callId}/reject`, {
+            method: "POST",
+            body: JSON.stringify({ reason }),
+        });
+    }
+
+    async endCall(callId: string) {
+        return this.fetchWithAuth(`/api/calls/${callId}/end`, {
+            method: "POST",
+        });
     }
 
     async deleteMessage(conversationId: string, messageId: string) {
