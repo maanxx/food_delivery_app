@@ -66,14 +66,15 @@ class ChatApi {
     }
 
     async getMessages(conversationId: string, limit = 50, cursor?: string) {
-        return this.fetchWithAuth(API_CONFIG.ENDPOINTS.CHAT.MESSAGES, {
-            method: "POST",
-            body: JSON.stringify({ conversationId, limit, cursor }),
+        let url = `/api/conversations/${conversationId}/messages?limit=${limit}`;
+        if (cursor) url += `&cursor=${cursor}`;
+        return this.fetchWithAuth(url, {
+            method: "GET",
         });
     }
 
     async sendMessage(conversationId: string, content: string, type = "text", metadata?: any) {
-        return this.fetchWithAuth(`${API_CONFIG.ENDPOINTS.CHAT.CONVERSATIONS}/${conversationId}/messages`, {
+        return this.fetchWithAuth(`/api/conversations/${conversationId}/messages`, {
             method: "POST",
             body: JSON.stringify({ content, type, ...metadata }),
         });
