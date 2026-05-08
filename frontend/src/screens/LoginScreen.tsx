@@ -77,11 +77,14 @@ const LoginScreen: React.FC = () => {
                     const data = await res.json();
                     // Lưu token và user vào AsyncStorage (hoặc gọi context nếu bạn có hàm cập nhật auth)
                     // Backend nên trả về dạng: { token: '...', user: { id, name, email, ... } }
-                    if (data?.token) {
-                        await AsyncStorage.setItem("authToken", data.token);
+                    if (data?.accessToken || data?.token) {
+                        await AsyncStorage.setItem("access_token", data.accessToken || data.token);
+                    }
+                    if (data?.refreshToken) {
+                        await AsyncStorage.setItem("refresh_token", data.refreshToken);
                     }
                     if (data?.user) {
-                        await AsyncStorage.setItem("user", JSON.stringify(data.user));
+                        await AsyncStorage.setItem("user_data", JSON.stringify(data.user));
                     }
 
                     setGoogleLoading(false);

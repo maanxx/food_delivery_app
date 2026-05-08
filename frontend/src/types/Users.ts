@@ -1,7 +1,7 @@
 export type Gender = "Male" | "Female" | "Other";
 export type LoginType = "Standard" | "Google" | "Facebook" | "Apple";
 export type UserRole = "Admin" | "Customer" | "Owner" | "Employee";
-export type PaymentMethod = "Credit Card" | "Momo" | "Zalo Pay" | "Bank Transfer" | "Cash";
+import { PaymentMethod } from "./Invoices";
 
 export interface User {
     user_id: string;

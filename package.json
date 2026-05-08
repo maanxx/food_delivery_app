@@ -12,6 +12,7 @@
     "license": "ISC",
     "description": "",
     "dependencies": {
-        "concurrently": "^9.2.1"
+        "concurrently": "^9.2.1",
+        "react-native-webrtc": "^124.0.7"
     }
 }

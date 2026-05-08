@@ -31,7 +31,7 @@ interface AuthContextType extends AuthState {
 const initialState: AuthState = {
     isAuthenticated: false,
     user: null,
-    isLoading: false,
+    isLoading: true,
     error: null,
 };
 
@@ -62,6 +62,7 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
         case "AUTH_LOGOUT":
             return {
                 ...initialState,
+                isLoading: false,
             };
         case "CLEAR_ERROR":
             return {
@@ -72,6 +73,7 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
             return {
                 ...state,
                 user: action.payload.user,
+                isLoading: false,
             };
         default:
             return state;
@@ -89,28 +91,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // Check authentication status on app start
     const checkAuthStatus = async () => {
+        console.log("[AuthContext] Checking auth status...");
         try {
             dispatch({ type: "AUTH_START" });
 
             const isAuth = await apiClient.isAuthenticated();
+            console.log("[AuthContext] Is authenticated (token exists):", isAuth);
             if (isAuth) {
                 const response = await apiClient.getProfile();
                 if (response.success && response.data) {
+                    console.log("[AuthContext] Profile loaded successfully for:", response.data.user?.email);
                     dispatch({
                         type: "AUTH_SUCCESS",
                         payload: { user: response.data.user },
                     });
                 } else {
+                    console.warn("[AuthContext] Token valid but profile load failed:", response.message);
                     // Token exists but invalid, logout
                     await apiClient.logout();
                     dispatch({ type: "AUTH_LOGOUT" });
                 }
             } else {
+                console.log("[AuthContext] No token found, user is guest");
                 dispatch({ type: "AUTH_LOGOUT" });
             }
         } catch (error) {
-            console.error("Auth check error:", error);
+            console.error("[AuthContext] Auth check failed unexpectedly:", error);
             dispatch({ type: "AUTH_LOGOUT" });
+        } finally {
+            console.log("[AuthContext] Auth status check complete");
         }
     };
 
@@ -225,6 +234,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             const response = await apiClient.changePassword(passwordData);
 
             if (response.success) {
+                dispatch({ type: "UPDATE_USER", payload: { user: state.user! } }); // Just to clear loading
                 dispatch({ type: "CLEAR_ERROR" });
                 return true;
             } else {
@@ -250,6 +260,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             const response = await apiClient.forgotPassword({ email });
 
             if (response.success) {
+                dispatch({ type: "UPDATE_USER", payload: { user: state.user! } }); // Just to clear loading
                 dispatch({ type: "CLEAR_ERROR" });
                 return true;
             } else {

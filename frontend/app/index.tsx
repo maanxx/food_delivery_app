@@ -5,11 +5,7 @@ import { useAuth } from "../src/contexts/AuthContext";
 import { Colors } from "../src/constants/Colors";
 
 export default function Index() {
-    const { user, isLoading, checkAuthStatus } = useAuth();
-
-    useEffect(() => {
-        checkAuthStatus();
-    }, []);
+    const { user, isLoading } = useAuth();
 
     if (isLoading) {
         return (

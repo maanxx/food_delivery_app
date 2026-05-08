@@ -1,15 +1,28 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, FlatList, TouchableOpacity, Image, StyleSheet, ActivityIndicator, RefreshControl } from "react-native";
+import { 
+    View, 
+    Text, 
+    FlatList, 
+    StyleSheet, 
+    ActivityIndicator, 
+    RefreshControl,
+    SafeAreaView,
+    TextInput,
+    TouchableOpacity
+} from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import ChatApi from "../../src/services/chatApi";
 import SocketService from "../../src/services/socketService";
+import ConversationItem from "../../src/components/Chat/ConversationItem";
+import { ChatColors } from "../../src/theme/chatTheme";
 
 const ChatListScreen = () => {
     const router = useRouter();
     const [conversations, setConversations] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
 
     const loadConversations = async () => {
         try {
@@ -30,7 +43,6 @@ const ChatListScreen = () => {
             let isMounted = true;
 
             const handleConversationUpdated = (data: any) => {
-                console.log("[ChatList] conversation_updated received:", data);
                 if (!isMounted) return;
                 setConversations((prev) => {
                     const existingIndex = prev.findIndex((c) => c.conversationId === data.conversationId);
@@ -49,27 +61,17 @@ const ChatListScreen = () => {
                 });
             };
 
-            const handleGroupDissolved = (data: any) => {
-                console.log("[ChatList] group_dissolved received:", data);
-                if (!isMounted) return;
-                setConversations((prev) => prev.filter((c) => c.conversationId !== data.conversationId));
-            };
-
             const initSocket = async () => {
                 await SocketService.connect();
                 if (!isMounted) return;
-                console.log("[ChatList] Socket connected, registering listeners");
                 SocketService.on("conversation_updated", handleConversationUpdated);
-                SocketService.on("group_dissolved", handleGroupDissolved);
             };
 
             initSocket();
 
             return () => {
                 isMounted = false;
-                console.log("[ChatList] Cleanup: removing listeners");
                 SocketService.off("conversation_updated", handleConversationUpdated);
-                SocketService.off("group_dissolved", handleGroupDissolved);
             };
         }, [])
     );
@@ -90,71 +92,91 @@ const ChatListScreen = () => {
         });
     };
 
-    const renderItem = ({ item }: { item: any }) => {
-        const lastMessage = item.lastMessage?.content || "No messages yet";
-        const time = item.lastMessageTimestamp ? new Date(item.lastMessageTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
-
-        return (
-            <TouchableOpacity style={styles.conversationItem} onPress={() => navigateToChat(item)}>
-                <Image
-                    source={item.avatarPath ? { uri: item.avatarPath } : (item.type === "group" ? { uri: "https://ui-avatars.com/api/?name=" + encodeURIComponent(item.name) + "&background=ff914c&color=fff" } : require("../../src/assets/images/user-avatar.jpg"))}
-                    style={styles.avatar}
-                />
-                <View style={styles.contentContainer}>
-                    <View style={styles.headerRow}>
-                        <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-                        <Text style={styles.time}>{time}</Text>
-                    </View>
-                    <View style={styles.messageRow}>
-                        <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.unreadMessage]} numberOfLines={1}>
-                            {lastMessage}
-                        </Text>
-                        {item.unreadCount > 0 && (
-                            <View style={styles.unreadBadge}>
-                                <Text style={styles.unreadText}>{item.unreadCount}</Text>
-                            </View>
-                        )}
-                    </View>
-                </View>
-            </TouchableOpacity>
-        );
+    const handleDelete = (id: string) => {
+        // Implement delete logic via API
+        setConversations(prev => prev.filter(c => c.conversationId !== id));
     };
+
+    const filteredConversations = conversations.filter(c => 
+        c.name?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#FF4B3A" />
+                <ActivityIndicator size="large" color={ChatColors.primary} />
             </View>
         );
     }
 
     return (
-        <View style={styles.container}>
+        <SafeAreaView style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Tin nhắn</Text>
                 <View style={styles.headerButtons}>
-                    <TouchableOpacity onPress={() => router.push("/chat/create-group")} style={styles.headerButton}>
-                        <Ionicons name="people-outline" size={26} color="#FF4B3A" />
+                    <TouchableOpacity onPress={() => router.push("/chat/create-group")} style={styles.headerIcon}>
+                        <Feather name="users" size={22} color={ChatColors.black} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => router.push("/chat/new")} style={styles.headerButton}>
-                        <Ionicons name="create-outline" size={24} color="#FF4B3A" />
+                    <TouchableOpacity onPress={() => router.push("/chat/new")} style={styles.headerIcon}>
+                        <Feather name="edit" size={22} color={ChatColors.black} />
                     </TouchableOpacity>
                 </View>
             </View>
+
+            <View style={styles.searchContainer}>
+                <View style={styles.searchBar}>
+                    <Ionicons name="search" size={20} color={ChatColors.gray} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Tìm kiếm cuộc trò chuyện..."
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                    />
+                    {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery("")}>
+                            <Ionicons name="close-circle" size={18} color={ChatColors.gray} />
+                        </TouchableOpacity>
+                    )}
+                </View>
+            </View>
+
             <FlatList
-                data={conversations}
+                data={filteredConversations}
                 keyExtractor={(item) => item.conversationId}
-                renderItem={renderItem}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#FF4B3A"]} />}
+                renderItem={({ item }) => (
+                    <ConversationItem 
+                        item={item} 
+                        onPress={navigateToChat}
+                        onDelete={handleDelete}
+                        onMute={() => {}}
+                        onArchive={() => {}}
+                    />
+                )}
+                refreshControl={
+                    <RefreshControl 
+                        refreshing={refreshing} 
+                        onRefresh={onRefresh} 
+                        colors={[ChatColors.primary]} 
+                    />
+                }
                 contentContainerStyle={styles.listContainer}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
-                        <Ionicons name="chatbubbles-outline" size={60} color="#ccc" />
-                        <Text style={styles.emptyText}>Chưa có tin nhắn nào.</Text>
+                        <View style={styles.emptyIconContainer}>
+                            <Ionicons name="chatbubbles-outline" size={60} color={ChatColors.gray} />
+                        </View>
+                        <Text style={styles.emptyTitle}>Chưa có cuộc trò chuyện</Text>
+                        <Text style={styles.emptySubtitle}>Bắt đầu nhắn tin với bạn bè ngay nào!</Text>
+                        <TouchableOpacity 
+                            style={styles.newChatButton}
+                            onPress={() => router.push("/chat/new")}
+                        >
+                            <Text style={styles.newChatButtonText}>Bắt đầu trò chuyện</Text>
+                        </TouchableOpacity>
                     </View>
                 }
             />
-        </View>
+        </SafeAreaView>
     );
 };
 
@@ -164,112 +186,94 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
     },
     header: {
-        paddingTop: 50,
-        paddingBottom: 20,
-        paddingHorizontal: 20,
-        backgroundColor: "#fff",
-        borderBottomWidth: 1,
-        borderBottomColor: "#f0f0f0",
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
+        paddingHorizontal: 20,
+        paddingVertical: 12,
     },
     headerTitle: {
-        fontSize: 28,
+        fontSize: 32,
         fontWeight: "bold",
-        color: "#333",
+        color: ChatColors.black,
     },
     headerButtons: {
         flexDirection: "row",
+        gap: 16,
+    },
+    headerIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: "#f2f2f7",
+        justifyContent: "center",
         alignItems: "center",
     },
-    headerButton: {
-        marginLeft: 15,
-        padding: 5,
+    searchContainer: {
+        paddingHorizontal: 16,
+        paddingBottom: 12,
     },
-    newChatButton: {
-        padding: 8,
+    searchBar: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#f2f2f7",
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        height: 44,
+    },
+    searchInput: {
+        flex: 1,
+        marginLeft: 8,
+        fontSize: 16,
+        color: ChatColors.black,
     },
     loadingContainer: {
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
+        backgroundColor: "#fff",
     },
     listContainer: {
         paddingBottom: 20,
-    },
-    conversationItem: {
-        flexDirection: "row",
-        padding: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: "#f5f5f5",
-        alignItems: "center",
-    },
-    avatar: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: "#eee",
-    },
-    contentContainer: {
-        flex: 1,
-        marginLeft: 15,
-    },
-    headerRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        marginBottom: 5,
-    },
-    name: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#333",
-        flex: 1,
-    },
-    time: {
-        fontSize: 12,
-        color: "#888",
-        marginLeft: 10,
-    },
-    messageRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-    },
-    lastMessage: {
-        fontSize: 14,
-        color: "#666",
-        flex: 1,
-    },
-    unreadMessage: {
-        fontWeight: "600",
-        color: "#333",
-    },
-    unreadBadge: {
-        backgroundColor: "#FF4B3A",
-        borderRadius: 10,
-        minWidth: 20,
-        height: 20,
-        justifyContent: "center",
-        alignItems: "center",
-        paddingHorizontal: 6,
-        marginLeft: 10,
-    },
-    unreadText: {
-        color: "#fff",
-        fontSize: 12,
-        fontWeight: "bold",
     },
     emptyContainer: {
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
         marginTop: 100,
+        paddingHorizontal: 40,
     },
-    emptyText: {
-        marginTop: 10,
+    emptyIconContainer: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: "#f8f9fa",
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 24,
+    },
+    emptyTitle: {
+        fontSize: 20,
+        fontWeight: "bold",
+        color: ChatColors.black,
+        marginBottom: 8,
+    },
+    emptySubtitle: {
         fontSize: 16,
-        color: "#888",
+        color: ChatColors.gray,
+        textAlign: "center",
+        marginBottom: 24,
+    },
+    newChatButton: {
+        backgroundColor: ChatColors.primary,
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 25,
+    },
+    newChatButtonText: {
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: "600",
     },
 });
 

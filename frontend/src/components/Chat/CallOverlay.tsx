@@ -1,20 +1,45 @@
-import { RTCPeerConnection, RTCIceCandidate, RTCSessionDescription, mediaDevices, RTCView } from "react-native-webrtc";
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, Animated, Dimensions } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import SocketService from "../../services/socketService";
 import ChatApi from "../../services/chatApi";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width, height } = Dimensions.get("window");
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+// Safe WebRTC imports for Expo Go
+let RTCPeerConnection: any;
+let RTCIceCandidate: any;
+let RTCSessionDescription: any;
+let mediaDevices: any;
+let RTCView: any;
+
+if (!isExpoGo) {
+    try {
+        const WebRTC = require("react-native-webrtc");
+        RTCPeerConnection = WebRTC.RTCPeerConnection;
+        RTCIceCandidate = WebRTC.RTCIceCandidate;
+        RTCSessionDescription = WebRTC.RTCSessionDescription;
+        mediaDevices = WebRTC.mediaDevices;
+        RTCView = WebRTC.RTCView;
+    } catch (e) {
+        console.warn("WebRTC native modules not found. Voice/Video calls disabled.");
+    }
+}
+
+import { useCall } from "../../contexts/CallContext";
 
 const CallOverlay = () => {
-    const [incomingCall, setIncomingCall] = useState<any>(null);
-    const [activeCall, setActiveCall] = useState<any>(null);
+    const { incomingCall, activeCall, setIncomingCall, setActiveCall, cleanupCall: contextCleanup } = useCall();
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [localStream, setLocalStream] = useState<any>(null);
     const [remoteStream, setRemoteStream] = useState<any>(null);
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
     
-    const pcRef = useRef<RTCPeerConnection | null>(null);
+    const pcRef = useRef<any>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
     useEffect(() => {
@@ -24,26 +49,12 @@ const CallOverlay = () => {
         };
         loadUser();
 
-        const handleCallRequest = (data: any) => {
-            console.log("[CallOverlay] Incoming call request:", data);
-            // Don't show if I'm the caller
-            if (data.callerId === currentUser?.user_id || data.callerId === currentUser?.id) return;
-            setIncomingCall(data);
+        if (incomingCall) {
             startPulse();
-        };
-
-        const handleCallResponse = (data: any) => {
-            console.log("[CallOverlay] Call response:", data);
-            if (data.status === "accepted") {
-                setIncomingCall(null);
-                setActiveCall(data);
-            } else {
-                setIncomingCall(null);
-                setActiveCall(null);
-            }
-        };
+        }
 
         const handleWebRTCSignal = async (data: any) => {
+            if (isExpoGo) return;
             console.log("[CallOverlay] WebRTC signal received:", data.type);
             const { signal, fromId } = data;
             
@@ -56,30 +67,21 @@ const CallOverlay = () => {
             }
         };
 
-        const handleCallEnded = (data: any) => {
-            console.log("[CallOverlay] Call ended:", data);
-            cleanupCall();
-        };
-
-        SocketService.on("call_request", handleCallRequest);
-        SocketService.on("call_response", handleCallResponse);
         SocketService.on("webrtc_signal", handleWebRTCSignal);
-        SocketService.on("call_ended", handleCallEnded);
 
         return () => {
-            SocketService.off("call_request", handleCallRequest);
-            SocketService.off("call_response", handleCallResponse);
             SocketService.off("webrtc_signal", handleWebRTCSignal);
-            SocketService.off("call_ended", handleCallEnded);
         };
-    }, [currentUser]);
+    }, [currentUser, incomingCall]);
 
     const createPeerConnection = async (targetId: string, isVideo: boolean) => {
+        if (isExpoGo || !RTCPeerConnection) return null;
+        
         const configuration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
         const pc = new RTCPeerConnection(configuration);
         pcRef.current = pc;
 
-        pc.onicecandidate = (event) => {
+        pc.onicecandidate = (event: any) => {
             if (event.candidate) {
                 SocketService.emitWebRTCSignal({
                     callId: activeCall?.callId || incomingCall?.callId,
@@ -89,7 +91,7 @@ const CallOverlay = () => {
             }
         };
 
-        pc.ontrack = (event) => {
+        pc.ontrack = (event: any) => {
             console.log("[CallOverlay] Remote track received");
             if (event.streams && event.streams[0]) {
                 setRemoteStream(event.streams[0]);
@@ -105,7 +107,7 @@ const CallOverlay = () => {
         try {
             const stream = await mediaDevices.getUserMedia(constraints);
             setLocalStream(stream);
-            stream.getTracks().forEach(track => pc.addTrack(track, stream));
+            stream.getTracks().forEach((track: any) => pc.addTrack(track, stream));
         } catch (error) {
             console.error("[CallOverlay] Failed to get local stream:", error);
         }
@@ -114,7 +116,9 @@ const CallOverlay = () => {
     };
 
     const handleOffer = async (offer: any, fromId: string) => {
+        if (isExpoGo) return;
         const pc = await createPeerConnection(fromId, incomingCall?.type === "video");
+        if (!pc) return;
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -148,10 +152,9 @@ const CallOverlay = () => {
             setLocalStream(null);
         }
         setRemoteStream(null);
-        setIncomingCall(null);
-        setActiveCall(null);
         setIsMuted(false);
         setIsVideoOff(false);
+        contextCleanup();
     };
 
     const startPulse = () => {
@@ -248,49 +251,62 @@ const CallOverlay = () => {
             {/* Active Call Modal (Simplified) */}
             <Modal visible={!!activeCall} transparent animationType="fade">
                 <View style={[styles.overlay, { backgroundColor: "#1a1a1a" }]}>
-                    <View style={styles.activeCallContainer}>
-                        {activeCall?.type === "video" && remoteStream ? (
-                            <RTCView 
-                                streamURL={remoteStream.toURL()} 
-                                style={styles.remoteVideo} 
-                                objectFit="cover" 
-                            />
-                        ) : (
-                            <Image 
-                                source={activeCall?.callerAvatar ? { uri: activeCall.callerAvatar } : require("../../assets/images/user-avatar.jpg")} 
-                                style={styles.largeAvatar} 
-                            />
-                        )}
-
-                        {activeCall?.type === "video" && localStream && (
-                            <View style={styles.localVideoContainer}>
+                    {isExpoGo ? (
+                        <View style={styles.activeCallContainer}>
+                            <Ionicons name="warning" size={50} color="#FF4B3A" />
+                            <Text style={[styles.activeCallerName, { marginTop: 20 }]}>Tính năng không hỗ trợ</Text>
+                            <Text style={[styles.activeTimer, { textAlign: "center", paddingHorizontal: 40 }]}>
+                                Tính năng gọi Voice/Video yêu cầu Development Build. Expo Go không hỗ trợ Native Modules WebRTC.
+                            </Text>
+                            <TouchableOpacity style={[styles.activeBtn, styles.endCallBtn]} onPress={handleEndCall}>
+                                <Ionicons name="close" size={30} color="#fff" />
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        <View style={styles.activeCallContainer}>
+                            {activeCall?.type === "video" && remoteStream ? (
                                 <RTCView 
-                                    streamURL={localStream.toURL()} 
-                                    style={styles.localVideo} 
+                                    streamURL={remoteStream.toURL()} 
+                                    style={styles.remoteVideo} 
                                     objectFit="cover" 
                                 />
-                            </View>
-                        )}
-
-                        <View style={styles.callDetails}>
-                            <Text style={styles.activeCallerName}>{activeCall?.callerName || "Đang trong cuộc gọi"}</Text>
-                            <Text style={styles.activeTimer}>00:00</Text>
-                        </View>
-                        
-                        <View style={styles.activeActions}>
-                            <TouchableOpacity style={[styles.activeBtn, isMuted && styles.activeBtnOff]} onPress={toggleMute}>
-                                <Ionicons name={isMuted ? "mic-off" : "mic"} size={24} color="#fff" />
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.activeBtn, styles.endCallBtn]} onPress={handleEndCall}>
-                                <Ionicons name="call-outline" size={30} color="#fff" style={{ transform: [{ rotate: "135deg" }] }} />
-                            </TouchableOpacity>
-                            {activeCall?.type === "video" && (
-                                <TouchableOpacity style={[styles.activeBtn, isVideoOff && styles.activeBtnOff]} onPress={toggleVideo}>
-                                    <Ionicons name={isVideoOff ? "videocam-off" : "videocam"} size={24} color="#fff" />
-                                </TouchableOpacity>
+                            ) : (
+                                <Image 
+                                    source={activeCall?.callerAvatar ? { uri: activeCall.callerAvatar } : require("../../assets/images/user-avatar.jpg")} 
+                                    style={styles.largeAvatar} 
+                                />
                             )}
+
+                            {activeCall?.type === "video" && localStream && (
+                                <View style={styles.localVideoContainer}>
+                                    <RTCView 
+                                        streamURL={localStream.toURL()} 
+                                        style={styles.localVideo} 
+                                        objectFit="cover" 
+                                    />
+                                </View>
+                            )}
+
+                            <View style={styles.callDetails}>
+                                <Text style={styles.activeCallerName}>{activeCall?.callerName || "Đang trong cuộc gọi"}</Text>
+                                <Text style={styles.activeTimer}>00:00</Text>
+                            </View>
+                            
+                            <View style={styles.activeActions}>
+                                <TouchableOpacity style={[styles.activeBtn, isMuted && styles.activeBtnOff]} onPress={toggleMute}>
+                                    <Ionicons name={isMuted ? "mic-off" : "mic"} size={24} color="#fff" />
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.activeBtn, styles.endCallBtn]} onPress={handleEndCall}>
+                                    <Ionicons name="call-outline" size={30} color="#fff" style={{ transform: [{ rotate: "135deg" }] }} />
+                                </TouchableOpacity>
+                                {activeCall?.type === "video" && (
+                                    <TouchableOpacity style={[styles.activeBtn, isVideoOff && styles.activeBtnOff]} onPress={toggleVideo}>
+                                        <Ionicons name={isVideoOff ? "videocam-off" : "videocam"} size={24} color="#fff" />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
                         </View>
-                    </View>
+                    )}
                 </View>
             </Modal>
         </View>
