@@ -1,17 +1,16 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useEffect } from "react";
-import {
-    View,
+import { View,
     Text,
     TextInput,
     TouchableOpacity,
     StyleSheet,
-    SafeAreaView,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
     Alert,
-    ActivityIndicator, // <-- added
-} from "react-native";
+    ActivityIndicator
+} from 'react-native';
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { AppColors } from "../assets/styles/AppColor";
@@ -23,7 +22,6 @@ import { ResponseType } from "expo-auth-session";
 import AsyncStorage from "@react-native-async-storage/async-storage"; // <-- added
 import API_CONFIG from "../configs/api";
 
-// Ensure redirect handling
 WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen: React.FC = () => {
@@ -33,18 +31,16 @@ const LoginScreen: React.FC = () => {
     const [showPassword, setShowPassword] = useState<boolean>(false);
     const [googleLoading, setGoogleLoading] = useState<boolean>(false);
 
-    // Configure Google auth request - REPLACE client IDs with yours
     const [request, response, promptAsync] = Google.useAuthRequest({
-        expoClientId: "YOUR_EXPO_CLIENT_ID.apps.googleusercontent.com", // expo client id (for dev in expo)
+        clientId: "YOUR_EXPO_CLIENT_ID.apps.googleusercontent.com",
         iosClientId: "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com",
         androidClientId: "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com",
-        webClientId: "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com", // for backend token verification
+        webClientId: "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com",
         responseType: ResponseType.IdToken,
         scopes: ["profile", "email"],
     });
 
     useEffect(() => {
-        // handle response after promptAsync
         (async () => {
             if (response?.type === "success") {
                 const idToken = response.authentication?.idToken;
@@ -55,7 +51,6 @@ const LoginScreen: React.FC = () => {
                 }
 
                 try {
-                    // Gửi idToken về backend để verify / tạo session
                     const res = await fetch(`${API_CONFIG.BASE_URL}/api/auth/google`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -75,8 +70,6 @@ const LoginScreen: React.FC = () => {
                     }
 
                     const data = await res.json();
-                    // Lưu token và user vào AsyncStorage (hoặc gọi context nếu bạn có hàm cập nhật auth)
-                    // Backend nên trả về dạng: { token: '...', user: { id, name, email, ... } }
                     if (data?.accessToken || data?.token) {
                         await AsyncStorage.setItem("access_token", data.accessToken || data.token);
                     }
@@ -103,9 +96,7 @@ const LoginScreen: React.FC = () => {
     const handleGoogleSignIn = async () => {
         try {
             setGoogleLoading(true);
-            // promptAsync opens the Google sign-in
-            await promptAsync({ useProxy: true, showInRecents: true });
-            // result handled in useEffect via `response`
+            await promptAsync();
         } catch (err: any) {
             setGoogleLoading(false);
             Alert.alert("Lỗi", err.message || "Không thể đăng nhập bằng Google");
@@ -113,7 +104,6 @@ const LoginScreen: React.FC = () => {
     };
 
     const handleLogin = async () => {
-        // Clear any previous errors
         clearError();
 
         if (!email || !password) {

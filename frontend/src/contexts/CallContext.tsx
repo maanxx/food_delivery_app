@@ -20,43 +20,71 @@ export const CallProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => {
         const loadUser = async () => {
             const userData = await AsyncStorage.getItem("user_data");
-            if (userData) setCurrentUser(JSON.parse(userData));
+            if (userData) {
+                const parsed = JSON.parse(userData);
+                setCurrentUser(parsed);
+            }
         };
         loadUser();
 
-        const handleCallRequest = (data: any) => {
-            console.log("[CallProvider] Incoming call request:", data);
+        const handleIncomingCall = (data: any) => {
+            console.log("[CallProvider] Incoming call:", data);
+            
+            const currentUserId = currentUser?.user_id || currentUser?.id;
+            const callerId = data.callerId || data.initiator_id || data.fromUserId;
+            
             // Don't show if I'm the caller
-            if (data.callerId === currentUser?.user_id || data.callerId === currentUser?.id) return;
-            setIncomingCall(data);
+            if (callerId === currentUserId) return;
+            
+            setIncomingCall({
+                callId: data.callId || data.id,
+                callerId: callerId,
+                callerName: data.callerName || data.caller_name || "Unknown",
+                callerAvatar: data.callerAvatar || data.caller_avatar,
+                type: data.callType || data.call_type || "voice",
+                conversationId: data.conversationId || data.conversation_id,
+            });
         };
 
-        const handleCallResponse = (data: any) => {
-            console.log("[CallProvider] Call response:", data);
-            if (data.status === "accepted") {
-                setIncomingCall(null);
-                setActiveCall(data);
-            } else {
-                setIncomingCall(null);
-                setActiveCall(null);
-            }
+        const handleCallAccepted = (data: any) => {
+            console.log("[CallProvider] Call accepted:", data);
+            setIncomingCall(null);
+            setActiveCall({
+                callId: data.callId || data.id,
+                recipientId: data.recipientId || data.userId,
+                callerName: data.recipientName || data.recipient_name,
+                callerAvatar: data.recipientAvatar || data.recipient_avatar,
+                type: data.callType || data.call_type || (activeCall ? activeCall.type : "voice"),
+                isInitiator: true // Since we received call_accepted, we are the initiator
+            });
         };
 
-        const handleCallEnded = () => {
-            console.log("[CallProvider] Call ended");
+        const handleCallRejected = (data: any) => {
+            console.log("[CallProvider] Call rejected:", data);
             cleanupCall();
         };
 
-        SocketService.on("call_request", handleCallRequest);
-        SocketService.on("call_response", handleCallResponse);
+        const handleCallEnded = () => {
+            console.log("[CallProvider] Call ended/cancelled");
+            cleanupCall();
+        };
+
+        SocketService.on("incoming_call", handleIncomingCall);
+        SocketService.on("call_accepted", handleCallAccepted);
+        SocketService.on("call_rejected", handleCallRejected);
+        SocketService.on("cancel_call", handleCallEnded);
+        SocketService.on("call_cancelled", handleCallEnded);
         SocketService.on("call_ended", handleCallEnded);
 
         return () => {
-            SocketService.off("call_request", handleCallRequest);
-            SocketService.off("call_response", handleCallResponse);
+            SocketService.off("incoming_call", handleIncomingCall);
+            SocketService.off("call_accepted", handleCallAccepted);
+            SocketService.off("call_rejected", handleCallRejected);
+            SocketService.off("cancel_call", handleCallEnded);
+            SocketService.off("call_cancelled", handleCallEnded);
             SocketService.off("call_ended", handleCallEnded);
         };
-    }, [currentUser]);
+    }, [currentUser, activeCall]);
 
     const cleanupCall = () => {
         setIncomingCall(null);

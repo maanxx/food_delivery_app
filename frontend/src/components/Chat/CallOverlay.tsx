@@ -53,26 +53,34 @@ const CallOverlay = () => {
             startPulse();
         }
 
-        const handleWebRTCSignal = async (data: any) => {
+        const handleOffer = async (data: any) => {
             if (isExpoGo) return;
-            console.log("[CallOverlay] WebRTC signal received:", data.type);
-            const { signal, fromId } = data;
-            
-            if (signal.type === "offer") {
-                await handleOffer(signal, fromId);
-            } else if (signal.type === "answer") {
-                await handleAnswer(signal);
-            } else if (signal.type === "candidate") {
-                await handleCandidate(signal);
-            }
+            console.log("[CallOverlay] Received offer:", data);
+            await handleOfferSignal(data.offer, data.fromUserId);
         };
 
-        SocketService.on("webrtc_signal", handleWebRTCSignal);
+        const handleAnswer = async (data: any) => {
+            if (isExpoGo) return;
+            console.log("[CallOverlay] Received answer:", data);
+            await handleAnswerSignal(data.answer);
+        };
+
+        const handleCandidate = async (data: any) => {
+            if (isExpoGo) return;
+            console.log("[CallOverlay] Received ice_candidate");
+            await handleCandidateSignal(data.candidate);
+        };
+
+        SocketService.on("offer", handleOffer);
+        SocketService.on("answer", handleAnswer);
+        SocketService.on("ice_candidate", handleCandidate);
 
         return () => {
-            SocketService.off("webrtc_signal", handleWebRTCSignal);
+            SocketService.off("offer", handleOffer);
+            SocketService.off("answer", handleAnswer);
+            SocketService.off("ice_candidate", handleCandidate);
         };
-    }, [currentUser, incomingCall]);
+    }, [currentUser, incomingCall, activeCall]);
 
     const createPeerConnection = async (targetId: string, isVideo: boolean) => {
         if (isExpoGo || !RTCPeerConnection) return null;
@@ -83,10 +91,13 @@ const CallOverlay = () => {
 
         pc.onicecandidate = (event: any) => {
             if (event.candidate) {
-                SocketService.emitWebRTCSignal({
+                SocketService.emit("ice_candidate", {
                     callId: activeCall?.callId || incomingCall?.callId,
-                    signal: { type: "candidate", candidate: event.candidate },
-                    targetId
+                    candidate: event.candidate.candidate,
+                    sdpMLineIndex: event.candidate.sdpMLineIndex,
+                    sdpMid: event.candidate.sdpMid,
+                    toUserId: targetId,
+                    fromUserId: currentUser?.user_id || currentUser?.id
                 });
             }
         };
@@ -115,30 +126,65 @@ const CallOverlay = () => {
         return pc;
     };
 
-    const handleOffer = async (offer: any, fromId: string) => {
+    // Caller setup: start connection and send offer
+    const initiateWebRTC = async (targetId: string, isVideo: boolean) => {
         if (isExpoGo) return;
-        const pc = await createPeerConnection(fromId, incomingCall?.type === "video");
+        const pc = await createPeerConnection(targetId, isVideo);
         if (!pc) return;
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
         
-        SocketService.emitWebRTCSignal({
-            callId: incomingCall?.callId,
-            signal: answer,
-            targetId: fromId
-        });
-    };
-
-    const handleAnswer = async (answer: any) => {
-        if (pcRef.current) {
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            SocketService.emit("offer", {
+                callId: activeCall?.callId,
+                offer: { type: offer.type, sdp: offer.sdp },
+                toUserId: targetId,
+                fromUserId: currentUser?.user_id || currentUser?.id
+            });
+        } catch (err) {
+            console.error("[CallOverlay] Failed to initiate WebRTC:", err);
         }
     };
 
-    const handleCandidate = async (signal: any) => {
+    const handleOfferSignal = async (offer: any, fromId: string) => {
+        if (isExpoGo) return;
+        const pc = await createPeerConnection(fromId, activeCall?.type === "video");
+        if (!pc) return;
+        
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            
+            SocketService.emit("answer", {
+                callId: activeCall?.callId || incomingCall?.callId,
+                answer: { type: answer.type, sdp: answer.sdp },
+                toUserId: fromId,
+                fromUserId: currentUser?.user_id || currentUser?.id
+            });
+        } catch (err) {
+            console.error("[CallOverlay] Failed to handle offer:", err);
+        }
+    };
+
+    const handleAnswerSignal = async (answer: any) => {
         if (pcRef.current) {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
+            try {
+                await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+            } catch (err) {
+                console.error("[CallOverlay] Failed to set remote desc:", err);
+            }
+        }
+    };
+
+    const handleCandidateSignal = async (candidate: any) => {
+        if (pcRef.current) {
+            try {
+                await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (err) {
+                console.error("[CallOverlay] Failed to add ICE candidate:", err);
+            }
         }
     };
 
@@ -156,6 +202,14 @@ const CallOverlay = () => {
         setIsVideoOff(false);
         contextCleanup();
     };
+
+    useEffect(() => {
+        if (activeCall && activeCall.isInitiator && !pcRef.current) {
+            // We are the caller and the callee accepted the call
+            console.log("[CallOverlay] Call accepted, initiating WebRTC offer...");
+            initiateWebRTC(activeCall.recipientId, activeCall.type === "video");
+        }
+    }, [activeCall]);
 
     const startPulse = () => {
         Animated.loop(

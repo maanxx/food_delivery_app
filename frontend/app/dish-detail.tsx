@@ -1,19 +1,17 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AntDesign, Feather, MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import {
-    Dimensions,
+import { Dimensions,
     Image,
     Pressable,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
-    ActivityIndicator,
-} from "react-native";
+    ActivityIndicator } from 'react-native';
 import { useAuth } from "../src/contexts/AuthContext";
 import { AppColors } from "../src/assets/styles/AppColor";
 import { useCart } from "../src/contexts/CartContext";

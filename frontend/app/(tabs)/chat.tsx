@@ -1,15 +1,13 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useEffect, useState, useCallback } from "react";
-import { 
-    View, 
+import { View, 
     Text, 
     FlatList, 
     StyleSheet, 
     ActivityIndicator, 
     RefreshControl,
-    SafeAreaView,
     TextInput,
-    TouchableOpacity
-} from "react-native";
+    TouchableOpacity } from 'react-native';
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import ChatApi from "../../src/services/chatApi";

@@ -1,19 +1,17 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useEffect, useCallback } from "react";
 import { Animated } from "react-native";
-import {
-    View,
+import { View,
     Text,
     StyleSheet,
     TextInput,
     TouchableOpacity,
-    SafeAreaView,
     FlatList,
     Image,
     ActivityIndicator,
     Alert,
     Keyboard,
-    TouchableWithoutFeedback,
-} from "react-native";
+    TouchableWithoutFeedback } from 'react-native';
 import { useRouter } from "expo-router";
 import { Feather, MaterialIcons, AntDesign } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";

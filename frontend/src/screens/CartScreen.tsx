@@ -1,5 +1,6 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React from "react";
-import { View, Text, StyleSheet, SafeAreaView } from "react-native";
+import { View, Text, StyleSheet } from 'react-native';
 import { Fonts } from "../constants/Fonts";
 import { AppColors } from "../assets/styles/AppColor";
 

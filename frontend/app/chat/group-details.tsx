@@ -1,18 +1,16 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useEffect } from "react";
-import {
-    View,
+import { View,
     Text,
     StyleSheet,
     TouchableOpacity,
     FlatList,
     Image,
-    SafeAreaView,
     ActivityIndicator,
     Alert,
     ScrollView,
     Modal,
-    TextInput,
-} from "react-native";
+    TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";

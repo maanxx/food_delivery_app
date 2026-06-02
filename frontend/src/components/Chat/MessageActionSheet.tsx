@@ -81,6 +81,14 @@ const MessageActionSheet: React.FC<MessageActionSheetProps> = ({
                         onPress={() => handleAction("forward")} 
                     />
                     
+                    {isMyMessage && (
+                        <ActionItem 
+                            icon="pencil-outline" 
+                            label="Chỉnh sửa" 
+                            onPress={() => handleAction("edit")} 
+                        />
+                    )}
+                    
                     <View style={styles.divider} />
                     
                     {isMyMessage && canRecall && (

@@ -84,10 +84,15 @@ class SocketService {
             "reaction_added",
             "reaction_removed",
             "group_dissolved",
-            "call_request",
-            "call_response",
-            "webrtc_signal",
+            "incoming_call",
+            "call_accepted",
+            "call_rejected",
+            "cancel_call",
+            "call_cancelled",
             "call_ended",
+            "ice_candidate",
+            "offer",
+            "answer",
         ];
 
         events.forEach((event) => {
@@ -161,6 +166,14 @@ class SocketService {
 
     emitCallEnd(data: { callId: string }) {
         this.socket?.emit("call_ended", data);
+    }
+
+    emit(event: string, data?: any) {
+        if (this.socket?.connected) {
+            this.socket.emit(event, data);
+        } else {
+            console.warn(`[Socket] Cannot emit ${event} because socket is not connected`);
+        }
     }
 
     on(event: string, callback: Function) {

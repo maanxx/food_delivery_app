@@ -1,12 +1,11 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { 
-    View, 
+import { View, 
     Text, 
     FlatList, 
     StyleSheet, 
     KeyboardAvoidingView, 
     Platform, 
-    SafeAreaView, 
     ActivityIndicator,
     Modal,
     Dimensions,
@@ -16,8 +15,7 @@ import {
     TouchableOpacity,
     Image,
     Pressable,
-    Keyboard
-} from "react-native";
+    Keyboard } from 'react-native';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import ChatApi from "../../src/services/chatApi";
@@ -87,6 +85,11 @@ const ChatDetailScreen = () => {
     const [editingMessage, setEditingMessage] = useState<any>(null);
     const [replyingToMessage, setReplyingToMessage] = useState<any>(null);
     
+    // Pagination states
+    const [cursor, setCursor] = useState<string | null>(null);
+    const [hasMore, setHasMore] = useState<boolean>(true);
+    const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
     const flatListRef = useRef<FlatList>(null);
 
     useEffect(() => {
@@ -100,6 +103,25 @@ const ChatDetailScreen = () => {
             }
         };
         fetchUserId();
+    }, []);
+
+    // Clean up stale typing indicators
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const now = Date.now();
+            setTypingUsers(prev => {
+                let changed = false;
+                const next = { ...prev };
+                for (const [uid, info] of Object.entries(next)) {
+                    if (now - info.timestamp > 5000) {
+                        delete next[uid];
+                        changed = true;
+                    }
+                }
+                return changed ? next : prev;
+            });
+        }, 2000);
+        return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
@@ -116,12 +138,68 @@ const ChatDetailScreen = () => {
                 );
                 setMessages(sortedMessages);
                 setConversation(convDetails);
+                setHasMore(msgData.hasMore ?? false);
+                setCursor(msgData.nextCursor ?? null);
             } catch (error) {
                 console.error("[ChatDetail] Failed to load data:", error);
             }
         };
         loadData();
     }, [conversationId]);
+
+    const loadMoreMessages = async () => {
+        if (!hasMore || isLoadingMore || !conversationId || !cursor) return;
+        
+        setIsLoadingMore(true);
+        try {
+            const msgData = await ChatApi.getMessages(conversationId, 50, cursor);
+            const olderMessages = msgData.messages || [];
+            
+            const sortedOlder = olderMessages.sort((a: any, b: any) => 
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+            
+            setMessages(prev => {
+                // Filter out duplicates just in case
+                const existingIds = new Set(prev.map(m => m.messageId));
+                const newUniques = sortedOlder.filter((m: any) => !existingIds.has(m.messageId));
+                return [...prev, ...newUniques];
+            });
+            
+            setHasMore(msgData.hasMore ?? false);
+            setCursor(msgData.nextCursor ?? null);
+        } catch (error) {
+            console.error("[ChatDetail] Failed to load more messages:", error);
+        } finally {
+            setIsLoadingMore(false);
+        }
+    };
+
+    // Mark unread messages as read
+    useEffect(() => {
+        if (!conversationId || !userId || messages.length === 0) return;
+        
+        const unreadMessages = messages.filter(m => m.senderId !== userId && m.status !== "seen");
+        if (unreadMessages.length > 0) {
+            const messageIds = unreadMessages.map(m => m.messageId);
+            
+            // Optimistically update locally
+            setMessages(prev => prev.map(m => 
+                messageIds.includes(m.messageId) ? { ...m, status: "seen", seenBy: [...(m.seenBy || []), userId] } : m
+            ));
+
+            // Emit to socket and update via API
+            try {
+                SocketService.emit("message:read", {
+                    conversationId,
+                    messageIds
+                });
+                ChatApi.markMessagesAsRead(conversationId, messageIds).catch(err => console.log("Failed to mark as read via API", err));
+            } catch (err) {
+                console.log("Error marking messages read:", err);
+            }
+        }
+    }, [messages, conversationId, userId]);
 
     useEffect(() => {
         if (!conversationId) return;
@@ -137,11 +215,100 @@ const ChatDetailScreen = () => {
             }
         };
 
+        const handleMessageRead = ({ conversationId: cId, messageIds, readBy }: any) => {
+            if (cId === conversationId) {
+                setMessages(prev => prev.map(m => 
+                    messageIds.includes(m.messageId) ? { ...m, status: "seen", seenBy: readBy } : m
+                ));
+            }
+        };
+
+        const handleMessageEdited = ({ conversationId: cId, messageId, content, editedAt }: any) => {
+            if (cId === conversationId) {
+                setMessages(prev => prev.map(m => 
+                    m.messageId === messageId ? { ...m, content, isEdited: true, editedAt } : m
+                ));
+            }
+        };
+
+        const handleMessageDeleted = ({ conversationId: cId, messageId }: any) => {
+            if (cId === conversationId) {
+                setMessages(prev => prev.map(m => 
+                    m.messageId === messageId ? { ...m, isDeleted: true } : m
+                ));
+            }
+        };
+
+        const handleMessageRecalled = ({ conversationId: cId, messageId }: any) => {
+            if (cId === conversationId) {
+                setMessages(prev => prev.map(m => 
+                    m.messageId === messageId ? { ...m, isRecalled: true } : m
+                ));
+            }
+        };
+
+        const handleReactionAdded = (data: any) => {
+            if (data.conversationId === conversationId) {
+                setMessages(prev => prev.map(m => {
+                    if (m.messageId === data.messageId) {
+                        const reactions = m.reactions || [];
+                        const existing = reactions.find((r: any) => r.userId === data.userId && r.emoji === data.emoji);
+                        if (!existing) {
+                            return { ...m, reactions: [...reactions, { userId: data.userId, emoji: data.emoji }] };
+                        }
+                    }
+                    return m;
+                }));
+            }
+        };
+
+        const handleReactionRemoved = (data: any) => {
+            if (data.conversationId === conversationId) {
+                setMessages(prev => prev.map(m => {
+                    if (m.messageId === data.messageId) {
+                        return {
+                            ...m,
+                            reactions: (m.reactions || []).filter((r: any) => !(r.userId === data.userId && r.emoji === data.emoji))
+                        };
+                    }
+                    return m;
+                }));
+            }
+        };
+
+        const handleUserTyping = (data: any) => {
+            if (data.conversationId === conversationId && data.userId !== userIdRef.current) {
+                const name = data.username || conversation?.name || "Người dùng";
+                setTypingUsers(prev => ({
+                    ...prev,
+                    [data.userId]: { name, timestamp: Date.now() }
+                }));
+            }
+        };
+
+        const handleUserStopTyping = (data: any) => {
+            if (data.conversationId === conversationId) {
+                setTypingUsers(prev => {
+                    const newTyping = { ...prev };
+                    delete newTyping[data.userId];
+                    return newTyping;
+                });
+            }
+        };
+
         const initSocket = async () => {
             await SocketService.connect();
             if (!isMounted) return;
             SocketService.joinConversation(conversationId);
             SocketService.on("new_message", handleNewMessage);
+            SocketService.on("message_read", handleMessageRead);
+            SocketService.on("message_edited", handleMessageEdited);
+            SocketService.on("message_deleted", handleMessageDeleted);
+            SocketService.on("message_recalled", handleMessageRecalled);
+            SocketService.on("reaction_added", handleReactionAdded);
+            SocketService.on("reaction_removed", handleReactionRemoved);
+            SocketService.on("user_typing", handleUserTyping);
+            SocketService.on("user_stop_typing", handleUserStopTyping);
         };
 
         initSocket();
@@ -150,6 +317,14 @@ const ChatDetailScreen = () => {
             isMounted = false;
             SocketService.leaveConversation(conversationId);
             SocketService.off("new_message", handleNewMessage);
+            SocketService.off("message_read", handleMessageRead);
+            SocketService.off("message_edited", handleMessageEdited);
+            SocketService.off("message_deleted", handleMessageDeleted);
+            SocketService.off("message_recalled", handleMessageRecalled);
+            SocketService.off("reaction_added", handleReactionAdded);
+            SocketService.off("reaction_removed", handleReactionRemoved);
+            SocketService.off("user_typing", handleUserTyping);
+            SocketService.off("user_stop_typing", handleUserStopTyping);
         };
     }, [conversationId, conversation]);
 
@@ -170,6 +345,10 @@ const ChatDetailScreen = () => {
         
         if (type === "text") {
             setInputText("");
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+            SocketService.emit("stop_typing", { conversationId });
         }
 
         try {
@@ -264,6 +443,22 @@ const ChatDetailScreen = () => {
                     await ChatApi.deleteMessage(conversationId, selectedMessage.messageId, false);
                     setMessages(prev => prev.filter(m => m.messageId !== selectedMessage.messageId));
                     break;
+                case "delete_everyone":
+                    await ChatApi.deleteMessage(conversationId, selectedMessage.messageId, true);
+                    setMessages(prev => prev.map(m => m.messageId === selectedMessage.messageId ? { ...m, isDeleted: true } : m));
+                    break;
+                case "recall":
+                    await ChatApi.recallMessage(conversationId, selectedMessage.messageId);
+                    setMessages(prev => prev.map(m => m.messageId === selectedMessage.messageId ? { ...m, isRecalled: true } : m));
+                    break;
+                case "edit":
+                    if (selectedMessage.type === "text") {
+                        setEditingMessage(selectedMessage);
+                        setInputText(selectedMessage.content);
+                    } else {
+                        Alert.alert("Thông báo", "Chỉ có thể chỉnh sửa tin nhắn văn bản.");
+                    }
+                    break;
                 case "reply":
                     setReplyingToMessage(selectedMessage);
                     break;
@@ -292,6 +487,27 @@ const ChatDetailScreen = () => {
             }
         } catch (error: any) {
             Alert.alert("Lỗi", error.message);
+        }
+    };
+
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleInputChange = (text: string) => {
+        setInputText(text);
+        if (text.trim().length > 0) {
+            SocketService.emit("typing", { conversationId });
+            
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+            typingTimeoutRef.current = setTimeout(() => {
+                SocketService.emit("stop_typing", { conversationId });
+            }, 3000);
+        } else {
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+            SocketService.emit("stop_typing", { conversationId });
         }
     };
 
@@ -340,8 +556,8 @@ const ChatDetailScreen = () => {
 
             <KeyboardAvoidingView 
                 style={styles.keyboardAvoid} 
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-                keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+                behavior={Platform.OS === "ios" ? "padding" : "padding"}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 110}
             >
                 <FlatList
                     ref={flatListRef}
@@ -351,6 +567,9 @@ const ChatDetailScreen = () => {
                     contentContainerStyle={styles.messagesContainer}
                     inverted
                     showsVerticalScrollIndicator={false}
+                    onEndReached={loadMoreMessages}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={isLoadingMore ? <ActivityIndicator color={ChatColors.primary} style={{ margin: 10 }} /> : null}
                 />
 
                 {typingText ? (
@@ -378,7 +597,7 @@ const ChatDetailScreen = () => {
 
                 <ChatInput 
                     value={inputText}
-                    onChangeText={setInputText}
+                    onChangeText={handleInputChange}
                     onSend={() => handleSend()}
                     onAttach={() => {
                         Keyboard.dismiss();
@@ -390,6 +609,21 @@ const ChatDetailScreen = () => {
                         setShowEmojiPicker(!showEmojiPicker);
                     }}
                     onVoice={() => {}} 
+                    onSendVoice={async (uri, duration) => {
+                        try {
+                            const formData = new FormData();
+                            formData.append("file", {
+                                uri,
+                                name: "voice_message.m4a",
+                                type: "audio/m4a"
+                            } as any);
+                            const data = await ChatApi.uploadFile(formData);
+                            await handleSend("", "voice", [{ ...data, type: "audio" }], { duration });
+                        } catch (error) {
+                            console.error("Voice upload error:", error);
+                            Alert.alert("Lỗi", "Không thể gửi tin nhắn thoại");
+                        }
+                    }}
                     isTyping={inputText.length > 0}
                 />
 

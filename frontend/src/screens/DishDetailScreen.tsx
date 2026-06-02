@@ -1,15 +1,13 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useEffect } from "react";
-import {
-    View,
+import { View,
     Text,
     StyleSheet,
     ScrollView,
     Image,
     TouchableOpacity,
-    SafeAreaView,
     Dimensions,
-    Pressable,
-} from "react-native";
+    Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Feather, AntDesign, MaterialIcons } from "@expo/vector-icons";
 import { AppColors } from "../src/assets/styles/AppColor";

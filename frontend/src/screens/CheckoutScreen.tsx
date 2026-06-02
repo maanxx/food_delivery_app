@@ -1,7 +1,8 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Image, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AppColors } from "../assets/styles/AppColor";
 import { CartItem, useCart } from "../contexts/CartContext";
 import { useAuth } from "../contexts/AuthContext";

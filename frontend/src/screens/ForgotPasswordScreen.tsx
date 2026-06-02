@@ -1,16 +1,14 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState } from "react";
-import {
-    View,
+import { View,
     Text,
     TextInput,
     TouchableOpacity,
     StyleSheet,
-    SafeAreaView,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
-    Alert,
-} from "react-native";
+    Alert } from 'react-native';
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { AppColors } from "../assets/styles/AppColor";
