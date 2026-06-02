@@ -11,6 +11,7 @@ import {
 import { Ionicons, Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { ChatColors } from "../../theme/chatTheme";
+import VoiceRecorder from "./VoiceRecorder";
 
 interface ChatInputProps {
     value: string;
@@ -18,7 +19,8 @@ interface ChatInputProps {
     onSend: () => void;
     onAttach: () => void;
     onEmoji: () => void;
-    onVoice: () => void;
+    onVoice?: () => void;
+    onSendVoice?: (uri: string, duration: number) => void;
     isTyping: boolean;
 }
 
@@ -29,6 +31,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     onAttach,
     onEmoji,
     onVoice,
+    onSendVoice,
     isTyping
 }) => {
     const [isFocused, setIsFocused] = useState(false);
@@ -81,9 +84,13 @@ const ChatInput: React.FC<ChatInputProps> = ({
                         </TouchableOpacity>
                     </Animated.View>
                 ) : (
-                    <TouchableOpacity style={styles.iconButton} onPress={onVoice}>
-                        <Feather name="mic" size={24} color={ChatColors.primary} />
-                    </TouchableOpacity>
+                    onSendVoice ? (
+                        <VoiceRecorder onSend={onSendVoice} />
+                    ) : (
+                        <TouchableOpacity style={styles.iconButton} onPress={onVoice}>
+                            <Feather name="mic" size={24} color={ChatColors.primary} />
+                        </TouchableOpacity>
+                    )
                 )}
             </View>
         </View>

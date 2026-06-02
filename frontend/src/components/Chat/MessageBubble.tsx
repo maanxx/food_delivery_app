@@ -298,8 +298,8 @@ const styles = StyleSheet.create({
     messageBubbleContainer: { maxWidth: "80%" },
     senderName: { fontSize: 11, color: "#8E8E93", marginLeft: 4, marginBottom: 2 },
     messageBubble: { 
-        paddingHorizontal: 14, 
-        paddingVertical: 10, 
+        paddingHorizontal: 16, 
+        paddingVertical: 12, 
         borderRadius: 20,
         overflow: "hidden",
         shadowColor: "#000",

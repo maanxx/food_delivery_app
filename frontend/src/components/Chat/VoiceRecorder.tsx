@@ -25,6 +25,25 @@ const VoiceRecorder = ({ onSend, onRecordingStatusChange }: VoiceRecorderProps) 
         onRecordingStatusChange?.(recorderState.isRecording);
     }, [recorderState.isRecording, recorderState.durationMillis]);
 
+    useEffect(() => {
+        let animation: Animated.CompositeAnimation | null = null;
+        if (isRecording) {
+            animatedScale.setValue(1);
+            animation = Animated.loop(
+                Animated.sequence([
+                    Animated.timing(animatedScale, { toValue: 1.5, duration: 600, useNativeDriver: true }),
+                    Animated.timing(animatedScale, { toValue: 1, duration: 600, useNativeDriver: true }),
+                ])
+            );
+            animation.start();
+        } else {
+            animatedScale.setValue(1);
+        }
+        return () => {
+            if (animation) animation.stop();
+        };
+    }, [isRecording]);
+
     const startRecording = async () => {
         try {
             const { granted } = await requestRecordingPermissionsAsync();
@@ -34,13 +53,6 @@ const VoiceRecorder = ({ onSend, onRecordingStatusChange }: VoiceRecorderProps) 
             
             await recorder.prepareToRecordAsync();
             recorder.record();
-            
-            Animated.loop(
-                Animated.sequence([
-                    Animated.timing(animatedScale, { toValue: 1.5, duration: 600, useNativeDriver: true }),
-                    Animated.timing(animatedScale, { toValue: 1, duration: 600, useNativeDriver: true }),
-                ])
-            ).start();
         } catch (err) {
             console.error("Failed to start recording", err);
         }
@@ -49,10 +61,8 @@ const VoiceRecorder = ({ onSend, onRecordingStatusChange }: VoiceRecorderProps) 
     const stopRecording = async (shouldSend: boolean) => {
         if (!recorder.isRecording && !isRecording) return;
         
-        animatedScale.setValue(1);
-        
         try {
-            await recorder.stopAsync();
+            await recorder.stop();
             const uri = recorder.uri;
             const finalDuration = Math.floor(recorderState.durationMillis / 1000);
             

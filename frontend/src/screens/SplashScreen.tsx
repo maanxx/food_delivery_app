@@ -1,5 +1,6 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useEffect, useRef } from "react";
-import { StyleSheet, Text, SafeAreaView, Animated } from "react-native";
+import { StyleSheet, Text, Animated } from 'react-native';
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";

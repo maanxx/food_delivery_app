@@ -1,16 +1,14 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState } from "react";
-import {
-    View,
+import { View,
     Text,
     TextInput,
     TouchableOpacity,
     StyleSheet,
-    SafeAreaView,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
-    Alert,
-} from "react-native";
+    Alert } from 'react-native';
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { AppColors } from "../assets/styles/AppColor";
@@ -111,7 +109,7 @@ const ForgotPasswordScreen: React.FC = () => {
     return (
         <SafeAreaView style={styles.container}>
             <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
                 style={styles.keyboardAvoidingView}
             >
                 <ScrollView
