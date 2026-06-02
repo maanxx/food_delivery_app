@@ -21,7 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 import ChatApi from "../../src/services/chatApi";
 import SocketService from "../../src/services/socketService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import EmojiSelector, { Categories } from "react-native-emoji-selector";
+import EmojiPicker from "rn-emoji-keyboard";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { VideoView, useVideoPlayer } from "expo-video";
@@ -41,7 +41,6 @@ import { ChatColors } from "../../src/theme/chatTheme";
 
 const { width, height } = Dimensions.get("window");
 
-// Component for full screen video preview
 const FullScreenVideo = ({ url }: { url: string }) => {
     const player = useVideoPlayer(url, (player) => {
         player.loop = false;
@@ -72,6 +71,7 @@ const ChatDetailScreen = () => {
     const [userId, setUserId] = useState<string | null>(null);
     const userIdRef = useRef<string | null>(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [isEmojiReady, setIsEmojiReady] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
     const [fullScreenMedia, setFullScreenMedia] = useState<any | null>(null);
@@ -85,7 +85,6 @@ const ChatDetailScreen = () => {
     const [editingMessage, setEditingMessage] = useState<any>(null);
     const [replyingToMessage, setReplyingToMessage] = useState<any>(null);
     
-    // Pagination states
     const [cursor, setCursor] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState<boolean>(true);
     const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
@@ -105,7 +104,15 @@ const ChatDetailScreen = () => {
         fetchUserId();
     }, []);
 
-    // Clean up stale typing indicators
+    useEffect(() => {
+        if (showEmojiPicker) {
+            const timer = setTimeout(() => setIsEmojiReady(true), 150);
+            return () => clearTimeout(timer);
+        } else {
+            setIsEmojiReady(false);
+        }
+    }, [showEmojiPicker]);
+
     useEffect(() => {
         const interval = setInterval(() => {
             const now = Date.now();
@@ -556,8 +563,8 @@ const ChatDetailScreen = () => {
 
             <KeyboardAvoidingView 
                 style={styles.keyboardAvoid} 
-                behavior={Platform.OS === "ios" ? "padding" : "padding"}
-                keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 110}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
             >
                 <FlatList
                     ref={flatListRef}
@@ -611,11 +618,15 @@ const ChatDetailScreen = () => {
                     onVoice={() => {}} 
                     onSendVoice={async (uri, duration) => {
                         try {
+                            const extension = uri.split('.').pop() || 'm4a';
+                            const mimeType = extension === '3gp' ? 'audio/3gpp' : 
+                                            extension === 'webm' ? 'audio/webm' : 
+                                            extension === 'mp4' ? 'audio/mp4' : 'audio/m4a';
                             const formData = new FormData();
                             formData.append("file", {
-                                uri,
-                                name: "voice_message.m4a",
-                                type: "audio/m4a"
+                                uri: Platform.OS === 'android' && !uri.startsWith('file://') ? `file://${uri}` : uri,
+                                name: `voice_message.${extension}`,
+                                type: mimeType
                             } as any);
                             const data = await ChatApi.uploadFile(formData);
                             await handleSend("", "voice", [{ ...data, type: "audio" }], { duration });
@@ -627,25 +638,11 @@ const ChatDetailScreen = () => {
                     isTyping={inputText.length > 0}
                 />
 
-                {showEmojiPicker && (
-                    <>
-                        <Pressable 
-                            style={styles.emojiBackdrop} 
-                            onPress={() => setShowEmojiPicker(false)} 
-                        />
-                        <View style={styles.emojiPickerContainer}>
-                            <View style={styles.emojiPickerHeader}>
-                                <View style={styles.emojiPickerHandle} />
-                            </View>
-                            <EmojiSelector
-                                onEmojiSelected={(emoji) => setInputText((prev) => prev + emoji)}
-                                category={Categories.all}
-                                showTabs={true}
-                                columns={8}
-                            />
-                        </View>
-                    </>
-                )}
+                <EmojiPicker
+                    open={showEmojiPicker}
+                    onClose={() => setShowEmojiPicker(false)}
+                    onEmojiSelected={(emojiObj) => setInputText((prev) => prev + emojiObj.emoji)}
+                />
             </KeyboardAvoidingView>
 
             <MessageActionSheet 
@@ -742,8 +739,8 @@ const styles = StyleSheet.create({
     emojiPickerContainer: {
         position: "absolute",
         bottom: 80,
-        left: 10,
-        right: 10,
+        alignSelf: "center",
+        width: width - 20,
         height: height * 0.4,
         backgroundColor: "#fff",
         borderRadius: 20,

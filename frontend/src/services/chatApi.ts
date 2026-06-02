@@ -9,8 +9,8 @@ class ChatApi {
             ...(options.headers as any),
         };
 
-        // Don't set Content-Type if it's FormData
-        if (!(options.body instanceof FormData)) {
+        const isFormData = options.body instanceof FormData || (options.body && typeof (options.body as any).append === 'function');
+        if (!isFormData) {
             headers["Content-Type"] = "application/json";
         }
 
@@ -223,6 +223,8 @@ class ChatApi {
             body: JSON.stringify({ memberId, role }),
         });
     }
+
+
 }
 
 export default new ChatApi();

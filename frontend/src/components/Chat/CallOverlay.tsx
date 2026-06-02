@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, Animated, Dimensions } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, Animated, Dimensions, Vibration } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import SocketService from "../../services/socketService";
@@ -9,7 +9,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const { width, height } = Dimensions.get("window");
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-// Safe WebRTC imports for Expo Go
 let RTCPeerConnection: any;
 let RTCIceCandidate: any;
 let RTCSessionDescription: any;
@@ -38,9 +37,15 @@ const CallOverlay = () => {
     const [remoteStream, setRemoteStream] = useState<any>(null);
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
+    const [isFrontCamera, setIsFrontCamera] = useState(true);
     
+    const [callStatus, setCallStatus] = useState<"ringing" | "connecting" | "connected">("ringing");
+    const [callDuration, setCallDuration] = useState(0);
+
     const pcRef = useRef<any>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
+    const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const ringingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         const loadUser = async () => {
@@ -51,6 +56,19 @@ const CallOverlay = () => {
 
         if (incomingCall) {
             startPulse();
+            Vibration.vibrate([1000, 2000], true); 
+        } else {
+            Vibration.cancel();
+        }
+
+        if (activeCall && activeCall.isInitiator && callStatus === "ringing") {
+            ringingTimeoutRef.current = setTimeout(() => {
+                handleEndCall();
+            }, 30000);
+        } else if (incomingCall) {
+            ringingTimeoutRef.current = setTimeout(() => {
+                handleReject();
+            }, 30000);
         }
 
         const handleOffer = async (data: any) => {
@@ -68,7 +86,16 @@ const CallOverlay = () => {
         const handleCandidate = async (data: any) => {
             if (isExpoGo) return;
             console.log("[CallOverlay] Received ice_candidate");
-            await handleCandidateSignal(data.candidate);
+            
+            const candidatePayload = typeof data.candidate === 'object' && data.candidate !== null
+                ? data.candidate
+                : {
+                    candidate: data.candidate,
+                    sdpMLineIndex: data.sdpMLineIndex !== undefined ? data.sdpMLineIndex : 0,
+                    sdpMid: data.sdpMid || "0"
+                };
+
+            await handleCandidateSignal(candidatePayload);
         };
 
         SocketService.on("offer", handleOffer);
@@ -79,8 +106,30 @@ const CallOverlay = () => {
             SocketService.off("offer", handleOffer);
             SocketService.off("answer", handleAnswer);
             SocketService.off("ice_candidate", handleCandidate);
+            Vibration.cancel();
+            if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
         };
     }, [currentUser, incomingCall, activeCall]);
+
+    useEffect(() => {
+        if (callStatus === "connected") {
+            timerIntervalRef.current = setInterval(() => {
+                setCallDuration((prev) => prev + 1);
+            }, 1000);
+        } else {
+            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        }
+
+        return () => {
+            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        };
+    }, [callStatus]);
+
+    const formatDuration = (seconds: number) => {
+        const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+        const s = (seconds % 60).toString().padStart(2, "0");
+        return `${m}:${s}`;
+    };
 
     const createPeerConnection = async (targetId: string, isVideo: boolean) => {
         if (isExpoGo || !RTCPeerConnection) return null;
@@ -91,14 +140,29 @@ const CallOverlay = () => {
 
         pc.onicecandidate = (event: any) => {
             if (event.candidate) {
+                // Send in a format perfectly compatible with simple-peer on the Web
                 SocketService.emit("ice_candidate", {
                     callId: activeCall?.callId || incomingCall?.callId,
-                    candidate: event.candidate.candidate,
+                    candidate: {
+                        candidate: event.candidate.candidate,
+                        sdpMLineIndex: event.candidate.sdpMLineIndex,
+                        sdpMid: event.candidate.sdpMid
+                    },
                     sdpMLineIndex: event.candidate.sdpMLineIndex,
                     sdpMid: event.candidate.sdpMid,
                     toUserId: targetId,
                     fromUserId: currentUser?.user_id || currentUser?.id
                 });
+            }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            console.log("[CallOverlay] ICE Connection State:", pc.iceConnectionState);
+            if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+                setCallStatus("connected");
+                if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
+            } else if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "closed" || pc.iceConnectionState === "disconnected") {
+                handleEndCall();
             }
         };
 
@@ -109,7 +173,6 @@ const CallOverlay = () => {
             }
         };
 
-        // Get local stream
         const constraints = {
             audio: true,
             video: isVideo ? { facingMode: "user" } : false
@@ -126,9 +189,9 @@ const CallOverlay = () => {
         return pc;
     };
 
-    // Caller setup: start connection and send offer
     const initiateWebRTC = async (targetId: string, isVideo: boolean) => {
         if (isExpoGo) return;
+        setCallStatus("connecting");
         const pc = await createPeerConnection(targetId, isVideo);
         if (!pc) return;
         
@@ -149,6 +212,7 @@ const CallOverlay = () => {
 
     const handleOfferSignal = async (offer: any, fromId: string) => {
         if (isExpoGo) return;
+        setCallStatus("connecting");
         const pc = await createPeerConnection(fromId, activeCall?.type === "video");
         if (!pc) return;
         
@@ -189,6 +253,10 @@ const CallOverlay = () => {
     };
 
     const cleanupCall = () => {
+        Vibration.cancel();
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
+        
         if (pcRef.current) {
             pcRef.current.close();
             pcRef.current = null;
@@ -200,16 +268,18 @@ const CallOverlay = () => {
         setRemoteStream(null);
         setIsMuted(false);
         setIsVideoOff(false);
+        setIsFrontCamera(true);
+        setCallStatus("ringing");
+        setCallDuration(0);
         contextCleanup();
     };
 
     useEffect(() => {
-        if (activeCall && activeCall.isInitiator && !pcRef.current) {
-            // We are the caller and the callee accepted the call
+        if (activeCall && activeCall.isInitiator && !pcRef.current && callStatus === "ringing") {
             console.log("[CallOverlay] Call accepted, initiating WebRTC offer...");
             initiateWebRTC(activeCall.recipientId, activeCall.type === "video");
         }
-    }, [activeCall]);
+    }, [activeCall, callStatus]);
 
     const startPulse = () => {
         Animated.loop(
@@ -222,11 +292,13 @@ const CallOverlay = () => {
 
     const handleAccept = async () => {
         if (!incomingCall) return;
+        Vibration.cancel();
+        if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
+        
         try {
             await ChatApi.acceptCall(incomingCall.callId);
             setIncomingCall(null);
             setActiveCall(incomingCall);
-            // Signal setup will happen when handleOffer is triggered by socket
         } catch (error) {
             console.error("Failed to accept call:", error);
         }
@@ -243,9 +315,10 @@ const CallOverlay = () => {
     };
 
     const handleEndCall = async () => {
-        if (!activeCall) return;
+        if (!activeCall && !incomingCall) return;
+        const targetId = activeCall?.callId || activeCall?.id || activeCall?.call_id || incomingCall?.callId || incomingCall?.call_id;
         try {
-            await ChatApi.endCall(activeCall.callId || activeCall.id);
+            await ChatApi.endCall(targetId);
             cleanupCall();
         } catch (error) {
             console.error("Failed to end call:", error);
@@ -256,6 +329,7 @@ const CallOverlay = () => {
     const toggleMute = () => {
         if (localStream) {
             localStream.getAudioTracks().forEach((track: any) => {
+                track.enabled = isMuted;
                 track.enabled = isMuted;
             });
             setIsMuted(!isMuted);
@@ -268,6 +342,17 @@ const CallOverlay = () => {
                 track.enabled = isVideoOff;
             });
             setIsVideoOff(!isVideoOff);
+        }
+    };
+
+    const toggleCamera = () => {
+        if (localStream) {
+            localStream.getVideoTracks().forEach((track: any) => {
+                if (typeof track._switchCamera === "function") {
+                    track._switchCamera();
+                }
+            });
+            setIsFrontCamera(!isFrontCamera);
         }
     };
 
@@ -302,7 +387,7 @@ const CallOverlay = () => {
                 </View>
             </Modal>
 
-            {/* Active Call Modal (Simplified) */}
+            {/* Active Call Modal */}
             <Modal visible={!!activeCall} transparent animationType="fade">
                 <View style={[styles.overlay, { backgroundColor: "#1a1a1a" }]}>
                     {isExpoGo ? (
@@ -338,12 +423,19 @@ const CallOverlay = () => {
                                         style={styles.localVideo} 
                                         objectFit="cover" 
                                     />
+                                    <TouchableOpacity style={styles.flipCameraBtn} onPress={toggleCamera}>
+                                        <Ionicons name="camera-reverse" size={24} color="#fff" />
+                                    </TouchableOpacity>
                                 </View>
                             )}
 
                             <View style={styles.callDetails}>
                                 <Text style={styles.activeCallerName}>{activeCall?.callerName || "Đang trong cuộc gọi"}</Text>
-                                <Text style={styles.activeTimer}>00:00</Text>
+                                <Text style={styles.activeTimer}>
+                                    {callStatus === "ringing" ? "Đang đổ chuông..." : 
+                                     callStatus === "connecting" ? "Đang kết nối..." :
+                                     formatDuration(callDuration)}
+                                </Text>
                             </View>
                             
                             <View style={styles.activeActions}>
@@ -381,8 +473,9 @@ const styles = StyleSheet.create({
     
     activeCallContainer: { flex: 1, justifyContent: "center", alignItems: "center", width: "100%" },
     remoteVideo: { width: "100%", height: "100%", position: "absolute" },
-    localVideoContainer: { position: "absolute", top: 50, right: 20, width: 100, height: 150, borderRadius: 10, overflow: "hidden", borderWidth: 2, borderColor: "#fff", backgroundColor: "#000" },
+    localVideoContainer: { position: "absolute", top: 50, right: 20, width: 100, height: 160, borderRadius: 10, overflow: "hidden", borderWidth: 2, borderColor: "#fff", backgroundColor: "#000" },
     localVideo: { width: "100%", height: "100%" },
+    flipCameraBtn: { position: "absolute", bottom: 10, right: 10, backgroundColor: "rgba(0,0,0,0.5)", padding: 5, borderRadius: 20 },
     callDetails: { position: "absolute", top: height * 0.4, alignItems: "center" },
     largeAvatar: { width: 150, height: 150, borderRadius: 75, marginBottom: 20, borderWidth: 3, borderColor: "#FF4B3A" },
     activeCallerName: { fontSize: 24, fontWeight: "bold", color: "#fff", textShadowColor: "rgba(0,0,0,0.5)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 5 },
